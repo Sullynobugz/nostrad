@@ -79,3 +79,56 @@ tradesRouter.post("/snapshot", async (req, res) => {
     res.status(500).json({ error: (err as Error).message });
   }
 });
+
+// POST /api/trades/reset — Alles löschen, Startkapital zurücksetzen
+tradesRouter.post("/reset", async (req, res) => {
+  const START_BALANCE = parseFloat(process.env.PAPER_TRADING_START_BALANCE || "1000");
+  const steps: string[] = [];
+  const errors: string[] = [];
+
+  async function step(label: string, fn: () => Promise<void>) {
+    try {
+      await fn();
+      steps.push(`✓ ${label}`);
+    } catch (err) {
+      errors.push(`✗ ${label}: ${(err as Error).message}`);
+    }
+  }
+
+  const epoch = "2000-01-01T00:00:00.000Z";
+
+  await step("paper_trades gelöscht", async () => {
+    const { error } = await supabase.from("paper_trades").delete().gte("created_at", epoch);
+    if (error) throw error;
+  });
+
+  await step("signals gelöscht", async () => {
+    const { error } = await supabase.from("signals").delete().gte("created_at", epoch);
+    if (error) throw error;
+  });
+
+  await step("events gelöscht", async () => {
+    const { error } = await supabase.from("events").delete().gte("created_at", epoch);
+    if (error) throw error;
+  });
+
+  await step("portfolio_snapshots gelöscht", async () => {
+    const { error } = await supabase.from("portfolio_snapshots").delete().gte("created_at", epoch);
+    if (error) throw error;
+  });
+
+  await step(`Startkapital auf ${START_BALANCE}€ zurückgesetzt`, async () => {
+    const { error } = await supabase
+      .from("portfolio_state")
+      .update({ cash_balance: START_BALANCE, updated_at: new Date().toISOString() })
+      .eq("id", 1);
+    if (error) throw error;
+  });
+
+  res.json({
+    success: errors.length === 0,
+    start_balance: START_BALANCE,
+    steps,
+    errors,
+  });
+});

@@ -6,7 +6,7 @@ import { runPolymarketEngine } from "../engines/polymarketEngine";
 import { runKronosEngine } from "../engines/kronosEngine";
 import { runFinalSignalEngine } from "../engines/finalSignalEngine";
 import { searchReddit } from "../services/reddit";
-import type { DbEvent } from "../types";
+import type { DbEvent, Direction } from "../types";
 
 export const signalsRouter = Router();
 
@@ -133,6 +133,101 @@ signalsRouter.post("/process-queue", async (req, res) => {
   }
 
   res.json({ success: true, processed: results.filter((r) => r.success).length, results });
+});
+
+// POST /api/signals/kronos-scan — Watchlist mit Kronos scannen, Signale direkt erstellen
+// Kein News-Ingest nötig. Kronos IS der Signal.
+signalsRouter.post("/kronos-scan", async (req, res) => {
+  const envWatchlist = process.env.KRONOS_WATCHLIST?.split(",").map((s) => s.trim()).filter(Boolean);
+  const defaultWatchlist = ["BTC", "ETH", "SOL", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN"];
+  const watchlist: string[] = req.body?.assets ?? envWatchlist ?? defaultWatchlist;
+  const minConfidence = parseInt((req.body?.min_confidence ?? process.env.PAPER_TRADING_MIN_CONFIDENCE) || "65");
+
+  const results: Array<{
+    asset: string;
+    status: "signal_created" | "skipped" | "error";
+    reason?: string;
+    direction?: string;
+    score?: number;
+    confidence?: number;
+    signal_id?: string;
+    error?: string;
+  }> = [];
+
+  for (const asset of watchlist) {
+    try {
+      const kronos = await runKronosEngine(asset);
+
+      if (kronos.kronos_direction === "neutral") {
+        results.push({ asset, status: "skipped", reason: `Kronos neutral (score=${kronos.kronos_score})` });
+        continue;
+      }
+
+      if (kronos.confidence < minConfidence) {
+        results.push({ asset, status: "skipped", reason: `Confidence ${kronos.confidence} < ${minConfidence}` });
+        continue;
+      }
+
+      // Kein Duplikat wenn bereits offener Trade für dieses Asset
+      const { data: existing } = await supabase
+        .from("paper_trades")
+        .select("id")
+        .eq("asset", asset)
+        .eq("status", "open")
+        .maybeSingle();
+
+      if (existing) {
+        results.push({ asset, status: "skipped", reason: "offene Position vorhanden" });
+        continue;
+      }
+
+      const direction: Direction =
+        kronos.kronos_direction === "bullish" ? "long" : "short";
+
+      const { data: signal, error } = await supabase
+        .from("signals")
+        .insert({
+          event_id: null,
+          asset,
+          horizon: kronos.horizon,
+          event_score: 50,
+          sentiment_score: 50,
+          polymarket_score: 50,
+          kronos_score: kronos.kronos_score,
+          final_score: kronos.kronos_score,
+          final_direction: direction,
+          confidence: kronos.confidence,
+          reasoning: `[Kronos-Scan · ${kronos.mode}] ${kronos.reasoning}`,
+          status: "pending",
+        })
+        .select()
+        .single();
+
+      if (error) {
+        results.push({ asset, status: "error", error: error.message });
+      } else {
+        results.push({
+          asset,
+          status: "signal_created",
+          signal_id: signal.id,
+          direction,
+          score: kronos.kronos_score,
+          confidence: kronos.confidence,
+        });
+      }
+    } catch (err) {
+      results.push({ asset, status: "error", error: (err as Error).message });
+    }
+  }
+
+  res.json({
+    success: true,
+    scanned: watchlist.length,
+    signals_created: results.filter((r) => r.status === "signal_created").length,
+    skipped: results.filter((r) => r.status === "skipped").length,
+    errors: results.filter((r) => r.status === "error").length,
+    results,
+  });
 });
 
 // GET /api/signals/latest — Letzte Signale

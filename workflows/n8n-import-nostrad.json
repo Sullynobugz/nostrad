@@ -1,0 +1,85 @@
+{
+  "name": "Nostrad — Kronos Auto Trading",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 4 }]
+        }
+      },
+      "id": "schedule-main",
+      "name": "Alle 4 Stunden",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://HOST_IP:3000/api/signals/kronos-scan",
+        "options": { "timeout": 120000 }
+      },
+      "id": "kronos-scan",
+      "name": "Kronos Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-scan",
+      "name": "5s warten",
+      "type": "n8n-nodes-base.wait",
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://HOST_IP:3000/api/trades/execute",
+        "options": { "timeout": 60000 }
+      },
+      "id": "execute-signals",
+      "name": "Execute Signals",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 9 * * *" }]
+        }
+      },
+      "id": "schedule-close",
+      "name": "Täglich 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://HOST_IP:3000/api/trades/close-expired",
+        "options": { "timeout": 60000 }
+      },
+      "id": "close-expired",
+      "name": "Close Expired Trades",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 500]
+    }
+  ],
+  "connections": {
+    "Alle 4 Stunden": {
+      "main": [[{ "node": "Kronos Scan", "type": "main", "index": 0 }]]
+    },
+    "Kronos Scan": {
+      "main": [[{ "node": "5s warten", "type": "main", "index": 0 }]]
+    },
+    "5s warten": {
+      "main": [[{ "node": "Execute Signals", "type": "main", "index": 0 }]]
+    },
+    "Täglich 09:00": {
+      "main": [[{ "node": "Close Expired Trades", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

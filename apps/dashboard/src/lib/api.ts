@@ -30,4 +30,6 @@ export const api = {
   demoExecuteSignals: (limit = 3) => post<any>("/trades/demo-execute", { limit }),
   closeExpired: () => post<any>("/trades/close-expired"),
   generateSignal: (asset: string) => post<any>("/signals/generate", { asset }),
+  kronosScan: (assets?: string[]) => post<any>("/signals/kronos-scan", assets ? { assets } : {}),
+  resetPortfolio: () => post<any>("/trades/reset"),
 };

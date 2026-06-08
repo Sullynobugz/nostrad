@@ -236,9 +236,12 @@ async function withFallback<T>(attempts: Array<() => Promise<T>>, symbol: string
 
 // Aktueller Preis eines Symbols
 export async function getQuote(symbol: string): Promise<number> {
+  const finnhubSymbol = CRYPTO_ASSETS.has(symbol.toUpperCase())
+    ? `BINANCE:${symbol.toUpperCase()}USDT`
+    : symbol;
   return withFallback(
     [
-      () => fetchFinnhubQuote(symbol),
+      () => fetchFinnhubQuote(finnhubSymbol),
       () => fetchTwelveQuote(symbol),
       () => fetchAlphaQuote(symbol),
       () => fetchYahooQuote(symbol),

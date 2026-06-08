@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+node_modules
+apps/dashboard/node_modules
+dist
+apps/dashboard/dist
+
+# Kronos Foundation Model (Python) — nicht im Production-Image
+# wird nur für KRONOS_MODE=python lokal gebraucht
+kronos/
+kronos_service/
+
+# Logs & Dev-Artefakte
+*.log
+npm-debug.log*
+.DS_Store

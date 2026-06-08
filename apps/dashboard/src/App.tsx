@@ -169,144 +169,159 @@ function ScoreHistogram({ signals }: { signals: any[] }) {
 }
 
 function HowToUse() {
-  const pipeline = [
-    {
-      step: "1",
-      title: "Ingest Run",
-      command: "POST /api/ingest/run",
-      body: "RSS, Finnhub market news and Reddit are queried. Each news item is scored by the Event Engine and relevant items become rows in events.",
-      output: "New unprocessed events with title, summary, relevance, sentiment placeholder and affected assets.",
-    },
-    {
-      step: "2",
-      title: "Process Queue",
-      command: "POST /api/signals/process-queue",
-      body: "Unprocessed events are selected by relevance. For each event, Event, Sentiment, Polymarket and Kronos engines run and their outputs are combined.",
-      output: "Rows in signals with final direction, final score, confidence and reasoning. The event is then marked processed.",
-    },
-    {
-      step: "3",
-      title: "Execute Signals",
-      command: "POST /api/trades/execute",
-      body: "Only pending signals above the configured score and confidence thresholds can open paper trades. Neutral signals are skipped.",
-      output: "Rows in paper_trades plus reserved virtual cash in portfolio_state.",
-    },
-    {
-      step: "4",
-      title: "Close Expired",
-      command: "POST /api/trades/close-expired",
-      body: "Open paper trades older than the configured holding period are closed with the latest quote and PnL is calculated.",
-      output: "Closed trades, updated portfolio cash and a portfolio snapshot.",
-    },
-  ];
-
-  const sources = [
-    ["RSS feeds", "General finance and technology news used as raw event candidates."],
-    ["Finnhub", "Market news, quotes and OHLCV candles for charting and trade entry/exit prices."],
-    ["Reddit", "Recent posts for asset-level sentiment. May be empty if Reddit returns 403."],
-    ["Polymarket", "Prediction-market probabilities used as directional context."],
-    ["Kronos", "Time-series direction from configured mode. If external candles fail, current code can fall back to mock behavior."],
-  ];
-
-  const recommendations = [
-    ["LONG", "The combined engines lean bullish and the signal passes score/confidence thresholds."],
-    ["SHORT", "The combined engines lean bearish and the signal passes score/confidence thresholds."],
-    ["NEUTRAL", "Engines are mixed, confidence is too weak, or no clear direction exists."],
-    ["PENDING", "Signal exists but has not been evaluated by the trade executor."],
-    ["TRADED", "A paper trade was opened from the signal."],
-    ["SKIPPED", "The signal did not qualify, was neutral, had duplicate exposure, lacked capital, or had quote issues."],
-  ];
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-5xl">
+
+      {/* Intro */}
       <section className="bg-terminal-card border border-terminal-border rounded-lg p-5">
-        <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-2">Operating Model</div>
-        <h2 className="text-lg font-semibold text-terminal-text mb-3">How Nostrad Turns Data Into Paper Trades</h2>
-        <p className="text-xs leading-6 text-terminal-muted max-w-4xl">
-          Nostrad is a paper-trading research loop. It collects market-related inputs, filters them into events, converts
-          events into multi-engine signals, and only opens virtual trades when a signal is strong enough. The useful test is
-          not whether every signal trades, but whether the full chain is observable and repeatable.
+        <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-1">Was ist Nostrad</div>
+        <p className="text-xs leading-6 text-terminal-muted">
+          Nostrad ist ein Paper-Trading-Forschungssystem. Es sammelt Markt-News, analysiert sie mit vier Engines (Event, Sentiment, Polymarket, Kronos), erzeugt daraus Handelssignale und eröffnet virtuelle Trades mit 1.000€ Startkapital. Kein Echtgeld, keine Broker-Anbindung.
         </p>
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-        {pipeline.map((item) => (
-          <div key={item.step} className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-terminal-blue text-sm font-semibold">{item.step}</span>
-              <span className="text-[9px] uppercase tracking-widest text-terminal-muted">{item.title}</span>
-            </div>
-            <div className="text-[10px] font-mono text-terminal-yellow mb-3">{item.command}</div>
-            <p className="text-[11px] leading-5 text-terminal-muted mb-3">{item.body}</p>
-            <p className="text-[11px] leading-5 text-terminal-text">{item.output}</p>
-          </div>
-        ))}
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <GuidePanel title="Data Sources" rows={sources} />
-        <GuidePanel title="Signal And Trade Meanings" rows={recommendations} />
-      </section>
-
+      {/* Der manuelle Zyklus */}
       <section className="bg-terminal-card border border-terminal-border rounded-lg p-5">
-        <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-3">Manual Test Run</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <StepList
-            title="Dashboard Steps"
-            items={[
-              "Open Dashboard and click Ingest Run.",
-              "Click Process Queue after ingest finishes.",
-              "Review Signal Feed for score, confidence, direction and reasoning.",
-              "Click Execute Signals to open eligible paper trades.",
-              "Review Portfolio and Open Positions.",
-              "Use Close Expired after the configured holding period.",
-            ]}
-          />
-          <StepList
-            title="What To Watch"
-            items={[
-              "Inserted events should be greater than zero unless all items are duplicates.",
-              "Signals can be generated without becoming trades.",
-              "Trades require score and confidence thresholds from the backend environment.",
-              "Skipped signals are expected and should include a reason.",
-              "Quote or external-source failures should be treated separately from database failures.",
-              "This is virtual capital only; no broker or real-money execution exists.",
-            ]}
-          />
+        <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-4">Manueller Zyklus — was wann klicken</div>
+        <div className="space-y-0 divide-y divide-terminal-border">
+          {[
+            {
+              nr: "1",
+              btn: "Ingest Run",
+              wann: "Zu Beginn einer Session oder wenn du frische Daten willst.",
+              was: "Holt RSS-Feeds, Finnhub-News und Reddit-Posts. Jede News wird vom Event-Engine bewertet und relevante Artikel landen als unverarbeitete Events in der DB.",
+              ergebnis: "Feedback im ActionBar: z.B. \"14 events, 0 signals\"",
+            },
+            {
+              nr: "2",
+              btn: "Process Queue",
+              wann: "Direkt nach Ingest Run — verarbeitet alle unverarbeiteten Events.",
+              was: "Für jedes relevante Event laufen alle vier Engines parallel: Event-Score, Sentiment-Score, Polymarket-Konfidenz und Kronos-Zeitreihenanalyse. Der Final Signal Engine kombiniert alles zu einem Score (0–100) und einer Richtung (LONG / SHORT / NEUTRAL).",
+              ergebnis: "Signale erscheinen im Signal-Feed mit Score, Konfidenz und Begründung.",
+            },
+            {
+              nr: "3",
+              btn: "Execute Signals",
+              wann: "Nach Process Queue — öffnet Trades für qualifizierte Signale.",
+              was: "Nur Signale mit Final Score ≥ 65 UND Confidence ≥ 65 werden gehandelt. Neutrale Signale und Duplikate (selbes Asset bereits offen) werden übersprungen. Pro Trade werden 100€ reserviert.",
+              ergebnis: "Neue Positionen erscheinen in Open Positions. Cash sinkt entsprechend.",
+            },
+            {
+              nr: "4",
+              btn: "Close Expired",
+              wann: "Nach 24h — oder manuell wenn du Ergebnisse sehen willst.",
+              was: "Alle offenen Trades älter als 24h werden zum aktuellen Marktpreis geschlossen. PnL wird berechnet. Cash wird zurückgebucht (inkl. Gewinn/Verlust).",
+              ergebnis: "Trade-Historie zeigt Ergebnis. Portfolio-Equity aktualisiert sich.",
+            },
+          ].map((s) => (
+            <div key={s.nr} className="py-4 grid grid-cols-12 gap-4 items-start">
+              <div className="col-span-1 text-xl font-bold text-terminal-blue/30 tabular-nums">{s.nr}</div>
+              <div className="col-span-2">
+                <span className="text-[10px] font-mono uppercase tracking-wider border border-terminal-blue/40 text-terminal-blue px-2 py-0.5 rounded">
+                  {s.btn}
+                </span>
+              </div>
+              <div className="col-span-9 space-y-1.5">
+                <p className="text-[11px] text-terminal-yellow font-medium">{s.wann}</p>
+                <p className="text-[11px] leading-5 text-terminal-muted">{s.was}</p>
+                <p className="text-[11px] text-terminal-text/60">→ {s.ergebnis}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
-    </div>
-  );
-}
 
-function GuidePanel({ title, rows }: { title: string; rows: string[][] }) {
-  return (
-    <div className="bg-terminal-card border border-terminal-border rounded-lg p-5">
-      <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-3">{title}</div>
-      <div className="divide-y divide-terminal-border">
-        {rows.map(([label, text]) => (
-          <div key={label} className="py-3 grid grid-cols-3 gap-4">
-            <div className="text-[11px] font-semibold text-terminal-blue">{label}</div>
-            <div className="col-span-2 text-[11px] leading-5 text-terminal-muted">{text}</div>
+      {/* Automatisches Trading mit Kronos 65% */}
+      <section className="bg-terminal-card border border-[#3b82f6]/30 rounded-lg p-5">
+        <div className="text-[10px] uppercase tracking-widest text-terminal-blue mb-4">Automatisch traden mit Kronos-Konfidenz 65%</div>
+        <p className="text-xs text-terminal-muted leading-5 mb-5">
+          Der Bot tradet automatisch, wenn du den kompletten Zyklus per n8n oder Cron-Job regelmäßig durchlaufen lässt.
+          Die 65%-Schwelle ist bereits in der <code className="text-terminal-yellow text-[10px]">.env</code> konfiguriert.
+        </p>
+
+        <div className="space-y-4">
+          <div className="border border-terminal-border rounded p-4">
+            <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-3">Option A — n8n (empfohlen, läuft ohne dich)</div>
+            <ol className="space-y-2">
+              {[
+                "n8n öffnen → neuen Workflow erstellen.",
+                "Schedule-Trigger: alle 4 Stunden (oder nach Wunsch).",
+                "HTTP Request Node → POST http://localhost:3000/api/ingest/run → warten bis fertig.",
+                "HTTP Request Node → POST http://localhost:3000/api/signals/process-queue → warten.",
+                "HTTP Request Node → POST http://localhost:3000/api/trades/execute.",
+                "Zweiter Workflow mit 24h-Delay: POST /api/trades/close-expired.",
+                "Workflow aktivieren. Ab jetzt läuft alles automatisch — du siehst neue Trades wenn du das Dashboard öffnest.",
+              ].map((item, i) => (
+                <li key={i} className="flex gap-3 text-[11px] leading-5 text-terminal-muted">
+                  <span className="text-terminal-blue font-semibold tabular-nums shrink-0">{i + 1}</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ol>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-function StepList({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-widest text-terminal-blue mb-3">{title}</div>
-      <ol className="space-y-2">
-        {items.map((item, index) => (
-          <li key={item} className="flex gap-3 text-[11px] leading-5 text-terminal-muted">
-            <span className="text-terminal-text font-semibold tabular-nums">{index + 1}</span>
-            <span>{item}</span>
-          </li>
-        ))}
-      </ol>
+          <div className="border border-terminal-border rounded p-4">
+            <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-3">Option B — macOS Cron (kein n8n nötig)</div>
+            <p className="text-[11px] text-terminal-muted mb-3">Terminal öffnen, folgende Zeile in <code className="text-terminal-yellow">crontab -e</code> eintragen:</p>
+            <pre className="text-[10px] font-mono text-terminal-green bg-black/40 p-3 rounded leading-6 overflow-x-auto">{`# Alle 4 Stunden: Ingest → Signale → Trades
+0 */4 * * * curl -s -X POST http://localhost:3000/api/ingest/run && sleep 30 && curl -s -X POST http://localhost:3000/api/signals/process-queue && sleep 60 && curl -s -X POST http://localhost:3000/api/trades/execute
+
+# Täglich 09:00: Abgelaufene Trades schließen
+0 9 * * * curl -s -X POST http://localhost:3000/api/trades/close-expired`}</pre>
+            <p className="text-[10px] text-terminal-muted mt-2">Voraussetzung: Backend muss laufen (<code className="text-terminal-yellow">npm run dev</code> im Hintergrund oder als Coolify-Service).</p>
+          </div>
+
+          <div className="border border-terminal-border rounded p-4">
+            <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-3">Kronos-Konfidenz erhöhen oder senken</div>
+            <p className="text-[11px] text-terminal-muted mb-3">In <code className="text-terminal-yellow text-[10px]">.env</code> anpassen — Server neu starten danach:</p>
+            <pre className="text-[10px] font-mono text-terminal-green bg-black/40 p-3 rounded leading-6">{`# Aktuell (Standard): 65% Score + 65% Confidence
+PAPER_TRADING_MIN_FINAL_SCORE=65
+PAPER_TRADING_MIN_CONFIDENCE=65
+
+# Konservativer (weniger Trades, höhere Qualität):
+PAPER_TRADING_MIN_FINAL_SCORE=72
+PAPER_TRADING_MIN_CONFIDENCE=72
+
+# Kronos auf echtes Foundation Model umschalten:
+KRONOS_MODE=python          # python | native | mock
+KRONOS_MODEL_SIZE=small     # mini | small | base`}</pre>
+          </div>
+        </div>
+      </section>
+
+      {/* Reset */}
+      <section className="bg-terminal-card border border-terminal-border rounded-lg p-5">
+        <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-3">Reset — Sauberer Neustart</div>
+        <p className="text-[11px] text-terminal-muted leading-5 mb-3">
+          Der <span className="border border-terminal-red/40 text-terminal-red px-1.5 py-0.5 rounded text-[10px] font-mono">Reset</span>-Button (oben rechts, rot) löscht alle Trades, Signale und Events und setzt das Portfolio auf 1.000€ zurück. Nützlich nach Testläufen mit falschen Daten.
+        </p>
+        <p className="text-[11px] text-terminal-muted leading-5">
+          Es erscheint ein Bestätigungsdialog — die Aktion ist nicht rückgängig zu machen.
+        </p>
+      </section>
+
+      {/* Signal-Bedeutungen kompakt */}
+      <section className="bg-terminal-card border border-terminal-border rounded-lg p-5">
+        <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-3">Signal- und Trade-Status</div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+          {[
+            ["LONG", "green", "Bullish-Signal, Schwellen erfüllt → Trade wird eröffnet"],
+            ["SHORT", "red", "Bearish-Signal, Schwellen erfüllt → Trade wird eröffnet"],
+            ["NEUTRAL", "muted", "Kein klares Signal — kein Trade"],
+            ["PENDING", "yellow", "Signal existiert, noch nicht vom Executor geprüft"],
+            ["TRADED", "green", "Trade wurde eröffnet"],
+            ["SKIPPED", "muted", "Schwellen nicht erreicht, Duplikat, oder kein Kapital mehr"],
+          ].map(([label, color, text]) => (
+            <div key={label} className="flex gap-3 items-start py-1.5 border-b border-terminal-border/50">
+              <span className={`text-[10px] font-mono font-semibold w-16 shrink-0 ${color === "green" ? "text-terminal-green" : color === "red" ? "text-terminal-red" : color === "yellow" ? "text-terminal-yellow" : "text-terminal-muted"}`}>
+                {label}
+              </span>
+              <span className="text-[11px] text-terminal-muted leading-4">{text}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
     </div>
   );
 }
