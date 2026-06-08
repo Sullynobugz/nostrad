@@ -66,6 +66,7 @@ Dashboard:
 Data and engine paths:
 
 - RSS, Finnhub, Reddit, and Polymarket provide input data.
+- Market data falls back in this order: Finnhub -> Twelve Data -> Alpha Vantage -> Yahoo Finance public chart API.
 - `eventEngine` scores raw news/events.
 - `sentimentEngine` scores social/news sentiment.
 - `polymarketEngine` reads relevant market probabilities.
@@ -94,6 +95,8 @@ Core variables:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_KEY`
 - `FINNHUB_API_KEY`
+- `TWELVEDATA_API_KEY` optional fallback for market candles and quotes
+- `ALPHAVANTAGE_API_KEY` optional fallback for market candles and quotes
 - `KRONOS_MODE`
 - `KRONOS_PYTHON_URL`
 

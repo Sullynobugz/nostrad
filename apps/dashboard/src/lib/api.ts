@@ -27,6 +27,7 @@ export const api = {
   runIngest: () => post<any>("/ingest/run"),
   processSignalQueue: () => post<any>("/signals/process-queue"),
   executeSignals: () => post<any>("/trades/execute"),
+  demoExecuteSignals: (limit = 3) => post<any>("/trades/demo-execute", { limit }),
   closeExpired: () => post<any>("/trades/close-expired"),
   generateSignal: (asset: string) => post<any>("/signals/generate", { asset }),
 };

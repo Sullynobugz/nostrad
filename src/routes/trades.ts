@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { supabase } from "../services/supabase";
-import { executePendingSignals } from "../paperTrading/executor";
+import { executePendingSignals, executeDemoSignals } from "../paperTrading/executor";
 import { closeExpiredTrades } from "../paperTrading/closer";
 import { getPortfolioSummary, takeSnapshot } from "../paperTrading/portfolio";
 
@@ -11,6 +11,17 @@ tradesRouter.post("/execute", async (req, res) => {
   try {
     const result = await executePendingSignals();
     res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST /api/trades/demo-execute — Demo-Trade-Run mit begrenzter Anzahl
+tradesRouter.post("/demo-execute", async (req, res) => {
+  try {
+    const limit = Number.isFinite(Number(req.body?.limit)) ? Math.max(1, Math.min(5, Number(req.body.limit))) : 3;
+    const result = await executeDemoSignals(limit);
+    res.json({ success: true, demo: true, limit, ...result });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

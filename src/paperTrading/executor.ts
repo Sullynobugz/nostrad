@@ -6,9 +6,35 @@ import type { DbSignal, DbPaperTrade, Direction } from "../types";
 const MAX_POSITION = parseFloat(process.env.PAPER_TRADING_MAX_POSITION || "100");
 const MIN_FINAL_SCORE = parseInt(process.env.PAPER_TRADING_MIN_FINAL_SCORE || "65");
 const MIN_CONFIDENCE = parseInt(process.env.PAPER_TRADING_MIN_CONFIDENCE || "65");
+const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA"]);
 
 // Prüft pending Signale und öffnet Trades wenn Kriterien erfüllt
 export async function executePendingSignals(): Promise<{
+  executed: number;
+  skipped: number;
+  details: string[];
+}> {
+  return executePendingSignalsInternal({
+    demoMode: false,
+    limit: undefined,
+  });
+}
+
+export async function executeDemoSignals(limit = 3): Promise<{
+  executed: number;
+  skipped: number;
+  details: string[];
+}> {
+  return executePendingSignalsInternal({
+    demoMode: true,
+    limit,
+  });
+}
+
+async function executePendingSignalsInternal(options: {
+  demoMode: boolean;
+  limit?: number;
+}): Promise<{
   executed: number;
   skipped: number;
   details: string[];
@@ -17,8 +43,6 @@ export async function executePendingSignals(): Promise<{
     .from("signals")
     .select("*")
     .eq("status", "pending")
-    .gte("final_score", MIN_FINAL_SCORE)
-    .gte("confidence", MIN_CONFIDENCE)
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(`Signals-Fetch fehlgeschlagen: ${error.message}`);
@@ -26,11 +50,24 @@ export async function executePendingSignals(): Promise<{
     return { executed: 0, skipped: 0, details: ["Keine handelbaren Signale"] };
   }
 
+  const filteredSignals = options.demoMode
+    ? (signals as DbSignal[])
+        .filter((signal) => signal.final_direction !== "neutral")
+        .sort((a, b) => b.final_score - a.final_score || b.confidence - a.confidence)
+        .slice(0, options.limit ?? 3)
+    : (signals as DbSignal[]).filter(
+        (signal) => signal.final_score >= MIN_FINAL_SCORE && signal.confidence >= MIN_CONFIDENCE
+      );
+
+  if (filteredSignals.length === 0) {
+    return { executed: 0, skipped: 0, details: ["Keine handelbaren Signale"] };
+  }
+
   let executed = 0;
   let skipped = 0;
   const details: string[] = [];
 
-  for (const signal of signals as DbSignal[]) {
+  for (const signal of filteredSignals) {
     try {
       const result = await executeSingleSignal(signal);
       if (result.success) {
@@ -82,11 +119,14 @@ async function executeSingleSignal(signal: DbSignal): Promise<{
   // Aktuellen Preis holen
   let entryPrice: number;
   try {
-    entryPrice = await getQuote(signal.asset);
+    entryPrice = CRYPTO_ASSETS.has(signal.asset)
+      ? await getQuote(`BINANCE:${signal.asset}USDT`)
+      : await getQuote(signal.asset);
   } catch {
-    // Bei Crypto-Assets alternatives Format versuchen
     try {
-      entryPrice = await getQuote(`BINANCE:${signal.asset}USDT`);
+      entryPrice = CRYPTO_ASSETS.has(signal.asset)
+        ? await getQuote(signal.asset)
+        : await getQuote(`BINANCE:${signal.asset}USDT`);
     } catch (err) {
       await markSignalSkipped(signal.id, "price_fetch_failed");
       return { success: false, reason: `Preis nicht verfügbar: ${(err as Error).message}` };

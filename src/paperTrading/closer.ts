@@ -4,6 +4,7 @@ import { updateCashBalance, getPortfolioState, takeSnapshot } from "./portfolio"
 import type { DbPaperTrade } from "../types";
 
 const HOLD_HOURS = parseInt(process.env.PAPER_TRADING_HOLD_HOURS || "24");
+const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA"]);
 
 // Schließt alle Trades die älter als HOLD_HOURS Stunden sind
 export async function closeExpiredTrades(): Promise<{
@@ -58,10 +59,14 @@ async function closeSingleTrade(trade: DbPaperTrade): Promise<{
   // Aktuellen Exit-Preis holen
   let exitPrice: number;
   try {
-    exitPrice = await getQuote(trade.asset);
+    exitPrice = CRYPTO_ASSETS.has(trade.asset)
+      ? await getQuote(`BINANCE:${trade.asset}USDT`)
+      : await getQuote(trade.asset);
   } catch {
     try {
-      exitPrice = await getQuote(`BINANCE:${trade.asset}USDT`);
+      exitPrice = CRYPTO_ASSETS.has(trade.asset)
+        ? await getQuote(trade.asset)
+        : await getQuote(`BINANCE:${trade.asset}USDT`);
     } catch (err) {
       throw new Error(`Exit-Preis nicht verfügbar: ${(err as Error).message}`);
     }

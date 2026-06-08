@@ -26,6 +26,7 @@ export function ActionBar({ onRefresh }: Props) {
   const actions = [
     { label: "Ingest Run", action: () => api.runIngest() },
     { label: "Process Queue", action: () => api.processSignalQueue() },
+    { label: "Demo Trades", action: () => api.demoExecuteSignals(3) },
     { label: "Execute Signals", action: () => api.executeSignals() },
     { label: "Close Expired", action: () => api.closeExpired() },
   ];

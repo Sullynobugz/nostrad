@@ -3,7 +3,7 @@ import { supabase } from "../services/supabase";
 import { fetchAllFeeds } from "../services/rss";
 import { fetchFinanceReddit } from "../services/reddit";
 import { getFinanceMarkets } from "../services/polymarket";
-import { getMarketNews, getCandles, getCryptoCandles } from "../services/finnhub";
+import { getMarketNews, getCandles, getCryptoCandles, generateMockCandles } from "../services/finnhub";
 import { runEventEngine } from "../engines/eventEngine";
 import { runSentimentEngine } from "../engines/sentimentEngine";
 import type { RawNewsItem, RawRedditPost } from "../types";
@@ -166,12 +166,18 @@ ingestRouter.post("/event", async (req, res) => {
 // GET /api/ingest/candles?asset=BTC — OHLCV-Daten für Chart
 ingestRouter.get("/candles", async (req, res) => {
   const asset = (req.query.asset as string || "BTC").toUpperCase();
+  const mode = (req.query.mode as string || "live").toLowerCase();
   try {
+    if (mode === "demo") {
+      const basePrice = asset === "BTC" ? 60000 : asset === "ETH" ? 3000 : asset === "SPY" ? 500 : asset === "QQQ" ? 400 : asset === "NVDA" ? 120 : 200;
+      return res.json(generateMockCandles(60, basePrice));
+    }
+
     const candles = CRYPTO_ASSETS.has(asset)
       ? await getCryptoCandles(`BINANCE:${asset}USDT`, 60)
       : await getCandles(asset, 60);
     res.json(candles);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    res.status(502).json({ error: (err as Error).message });
   }
 });

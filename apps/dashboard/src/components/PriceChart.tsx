@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createChart, ColorType, CrosshairMode } from "lightweight-charts";
 
 const ASSETS = ["BTC", "ETH", "SPY", "QQQ", "NVDA", "TSLA"];
@@ -13,6 +13,9 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
   const seriesRef = useRef<any>(null);
+  const [dataMode, setDataMode] = useState<"live" | "demo">("live");
+  const [dataState, setDataState] = useState<"loading" | "live" | "demo" | "empty" | "error">("loading");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -45,12 +48,19 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
     chartRef.current = chart;
     seriesRef.current = candleSeries;
 
-    const resizeObserver = new ResizeObserver(() => {
-      if (containerRef.current) {
-        chart.applyOptions({ width: containerRef.current.clientWidth });
+    const syncSize = () => {
+      if (!containerRef.current) return;
+      const { width, height } = containerRef.current.getBoundingClientRect();
+      if (width > 0 && height > 0) {
+        chart.applyOptions({ width, height });
       }
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncSize();
     });
     resizeObserver.observe(containerRef.current);
+    syncSize();
 
     return () => {
       resizeObserver.disconnect();
@@ -62,10 +72,17 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
   useEffect(() => {
     if (!seriesRef.current) return;
 
-    fetch(`/api/ingest/candles?asset=${asset}`)
+    setDataState("loading");
+    setErrorMessage(null);
+
+    fetch(`/api/ingest/candles?asset=${asset}&mode=${dataMode}`)
       .then((r) => r.json())
       .then((candles: any[]) => {
-        if (!Array.isArray(candles) || candles.length === 0) return;
+        if (!Array.isArray(candles) || candles.length === 0) {
+          setDataState("empty");
+          seriesRef.current?.setData([]);
+          return;
+        }
 
         const data = candles.map((c: any) => ({
           time: c.date,
@@ -76,7 +93,8 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
         }));
 
         seriesRef.current.setData(data);
-        chartRef.current?.timeScale().fitContent();
+        requestAnimationFrame(() => chartRef.current?.timeScale().fitContent());
+        setDataState(dataMode);
 
         // Trade-Marker hinzufügen
         const markers = trades
@@ -94,19 +112,43 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
           seriesRef.current.setMarkers(markers);
         }
       })
-      .catch(() => {
-        // Platzhalter-Daten wenn API nicht antwortet
-        const mockData = generateMockCandles(30, asset === "BTC" ? 60000 : asset === "ETH" ? 3000 : 500);
-        seriesRef.current?.setData(mockData);
-        chartRef.current?.timeScale().fitContent();
+      .catch((err) => {
+        setErrorMessage((err as Error).message);
+        setDataState("error");
+        seriesRef.current?.setData([]);
       });
-  }, [asset, trades]);
+  }, [asset, trades, dataMode]);
 
   return (
-    <div className="bg-terminal-card border border-terminal-border rounded-lg flex flex-col">
+    <div className="bg-terminal-card border border-terminal-border rounded-lg flex flex-col h-full overflow-hidden min-h-[34rem]">
       <div className="px-4 py-3 border-b border-terminal-border flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest text-terminal-muted">Price Chart</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] uppercase tracking-widest text-terminal-muted">Price Chart</span>
+          <span className={`text-[9px] uppercase tracking-widest ${dataState === "live" ? "text-terminal-green" : dataState === "demo" ? "text-terminal-yellow" : "text-terminal-muted"}`}>
+            {dataState === "live" ? "LIVE" : dataState === "demo" ? "DEMO" : dataState === "loading" ? "LOADING" : dataState === "empty" ? "EMPTY" : "ERROR"}
+          </span>
+        </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setDataMode("live")}
+            className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${
+              dataMode === "live"
+                ? "bg-terminal-green/20 text-terminal-green border border-terminal-green/40"
+                : "text-terminal-muted hover:text-terminal-text"
+            }`}
+          >
+            Live
+          </button>
+          <button
+            onClick={() => setDataMode("demo")}
+            className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${
+              dataMode === "demo"
+                ? "bg-terminal-yellow/20 text-terminal-yellow border border-terminal-yellow/40"
+                : "text-terminal-muted hover:text-terminal-text"
+            }`}
+          >
+            Demo
+          </button>
           {ASSETS.map((a) => (
             <button
               key={a}
@@ -122,29 +164,23 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
           ))}
         </div>
       </div>
-      <div ref={containerRef} className="h-64 w-full" />
+      <div className="relative flex-1 min-h-0">
+        <div ref={containerRef} className="absolute inset-0" />
+        {(dataState === "empty" || dataState === "error") && (
+          <div className="absolute inset-0 flex items-center justify-center bg-terminal-bg/80 backdrop-blur-[1px] px-6">
+            <div className="max-w-md text-center border border-terminal-border rounded-lg bg-terminal-card px-4 py-3">
+              <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-2">
+                {dataState === "empty" ? "No live candles" : "Live candle fetch failed"}
+              </div>
+              <p className="text-[11px] leading-5 text-terminal-muted">
+                {dataState === "empty"
+                  ? "Switch to Demo to inspect the chart with clearly marked demo data."
+                  : `Live market data is unavailable for ${asset}.${errorMessage ? ` ${errorMessage}` : ""} Use Demo only for UI testing.`}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
-}
-
-function generateMockCandles(days: number, basePrice: number) {
-  const today = new Date();
-  const data = [];
-  let price = basePrice;
-
-  for (let i = days; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split("T")[0];
-
-    const change = (Math.random() - 0.48) * price * 0.03;
-    const open = price;
-    const close = Math.max(price + change, price * 0.9);
-    const high = Math.max(open, close) * (1 + Math.random() * 0.01);
-    const low = Math.min(open, close) * (1 - Math.random() * 0.01);
-    price = close;
-
-    data.push({ time: dateStr, open, high, low, close });
-  }
-  return data;
 }
