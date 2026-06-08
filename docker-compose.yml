@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+
+  # ── Nostrad API + Dashboard ────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      KRONOS_MODE: python
+      KRONOS_PYTHON_URL: http://kronos:5001/predict
+      # Secrets via .env-Datei oder Coolify-Env-Vars:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      PAPER_TRADING_START_BALANCE: ${PAPER_TRADING_START_BALANCE:-1000}
+      PAPER_TRADING_MAX_POSITION: ${PAPER_TRADING_MAX_POSITION:-100}
+      PAPER_TRADING_MIN_FINAL_SCORE: ${PAPER_TRADING_MIN_FINAL_SCORE:-65}
+      PAPER_TRADING_MIN_CONFIDENCE: ${PAPER_TRADING_MIN_CONFIDENCE:-65}
+      PAPER_TRADING_HOLD_HOURS: ${PAPER_TRADING_HOLD_HOURS:-24}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    depends_on:
+      kronos:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Kronos Foundation Model Service ──────────────────────────────────────
+  kronos:
+    build:
+      context: .
+      dockerfile: kronos_service/Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      KRONOS_MODEL_SIZE: ${KRONOS_MODEL_SIZE:-small}
+      KRONOS_DEVICE: ${KRONOS_DEVICE:-cpu}
+      KRONOS_SAMPLE_COUNT: ${KRONOS_SAMPLE_COUNT:-5}
+      KRONOS_PRED_LEN: ${KRONOS_PRED_LEN:-1}
+    volumes:
+      # Modellgewichte persistent cachen — kein Re-Download bei Neustart
+      - kronos_hf_cache:/app/hf_cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
+volumes:
+  kronos_hf_cache:

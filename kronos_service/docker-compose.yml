@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  kronos:
+    build:
+      context: ..
+      dockerfile: kronos_service/Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      KRONOS_MODEL_SIZE: small   # mini | small | base
+      KRONOS_DEVICE: cpu         # cpu | cuda (falls GPU vorhanden)
+      KRONOS_SAMPLE_COUNT: 5
+      KRONOS_PRED_LEN: 1
+    volumes:
+      # HuggingFace-Modell persistent cachen (kein Re-Download bei Neustart)
+      - kronos_hf_cache:/app/hf_cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Modell-Ladezeit einkalkulieren
+
+volumes:
+  kronos_hf_cache:
