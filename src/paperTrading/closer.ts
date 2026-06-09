@@ -52,7 +52,37 @@ export async function closeExpiredTrades(): Promise<{
   return { closed, errors, pnl_total: pnlTotal, details };
 }
 
+export async function closeTradeNow(tradeId: string, reason = "manual"): Promise<{
+  asset: string;
+  direction: string;
+  exit_price: number;
+  pnl_absolute: number;
+  pnl_percent: number;
+}> {
+  const { data: trade, error } = await supabase
+    .from("paper_trades")
+    .select("*")
+    .eq("id", tradeId)
+    .eq("status", "open")
+    .single();
+
+  if (error || !trade) throw new Error(`Offener Trade nicht gefunden: ${error?.message}`);
+
+  const result = await closeSingleTrade(trade as DbPaperTrade);
+  await takeSnapshot();
+
+  console.log(`[Closer] Trade wegen ${reason} geschlossen: ${trade.asset}`);
+  return {
+    asset: trade.asset,
+    direction: trade.direction,
+    exit_price: result.exit_price,
+    pnl_absolute: result.pnl_absolute,
+    pnl_percent: result.pnl_percent,
+  };
+}
+
 async function closeSingleTrade(trade: DbPaperTrade): Promise<{
+  exit_price: number;
   pnl_absolute: number;
   pnl_percent: number;
 }> {
@@ -107,5 +137,5 @@ async function closeSingleTrade(trade: DbPaperTrade): Promise<{
     `${trade.entry_price} → ${exitPrice} | PnL: ${pnlAbsolute > 0 ? "+" : ""}${pnlAbsolute}€`
   );
 
-  return { pnl_absolute: pnlAbsolute, pnl_percent: pnlPercent };
+  return { exit_price: exitPrice, pnl_absolute: pnlAbsolute, pnl_percent: pnlPercent };
 }

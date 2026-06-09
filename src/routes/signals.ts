@@ -7,7 +7,8 @@ import { runKronosEngine } from "../engines/kronosEngine";
 import { runFinalSignalEngine } from "../engines/finalSignalEngine";
 import { searchReddit } from "../services/reddit";
 import { executeSignalIds } from "../paperTrading/executor";
-import type { DbEvent, Direction } from "../types";
+import { closeTradeNow } from "../paperTrading/closer";
+import type { DbEvent, DbPaperTrade, Direction } from "../types";
 
 export const signalsRouter = Router();
 
@@ -147,49 +148,82 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   ];
   const watchlist: string[] = req.body?.assets ?? envWatchlist ?? defaultWatchlist;
   const minConfidence = parseInt((req.body?.min_confidence ?? process.env.PAPER_TRADING_MIN_CONFIDENCE) || "65");
+  const exitScore = parseInt((req.body?.exit_score ?? process.env.PAPER_TRADING_EXIT_SCORE) || "55");
   const autoTrade = req.body?.auto_trade !== false;
+  const autoClose = req.body?.auto_close !== false;
   const createdSignalIds: string[] = [];
+  const closedTrades: string[] = [];
 
   const results: Array<{
     asset: string;
-    status: "signal_created" | "skipped" | "error";
+    status: "signal_created" | "trade_closed" | "skipped" | "error";
     reason?: string;
     direction?: string;
     score?: number;
     confidence?: number;
     signal_id?: string;
+    trade_id?: string;
+    pnl_absolute?: number;
+    pnl_percent?: number;
     error?: string;
   }> = [];
 
   for (const asset of watchlist) {
     try {
       const kronos = await runKronosEngine(asset);
+      const signalConfidence = kronos.kronos_score;
 
-      if (kronos.kronos_direction === "neutral") {
-        results.push({ asset, status: "skipped", reason: `Kronos neutral (score=${kronos.kronos_score})` });
-        continue;
-      }
-
-      if (kronos.confidence < minConfidence) {
-        results.push({ asset, status: "skipped", reason: `Confidence ${kronos.confidence} < ${minConfidence}` });
-        continue;
-      }
-
-      // Kein Duplikat wenn bereits offener Trade für dieses Asset
       const { data: existing } = await supabase
         .from("paper_trades")
-        .select("id")
+        .select("*")
         .eq("asset", asset)
         .eq("status", "open")
         .maybeSingle();
 
-      if (existing) {
-        results.push({ asset, status: "skipped", reason: "offene Position vorhanden" });
+      const recommendedDirection: Direction =
+        kronos.kronos_direction === "bullish"
+          ? "long"
+          : kronos.kronos_direction === "bearish"
+          ? "short"
+          : "neutral";
+
+      if (existing && autoClose) {
+        const exitReason = getKronosExitReason(existing as DbPaperTrade, recommendedDirection, signalConfidence, minConfidence, exitScore);
+        if (exitReason) {
+          const closed = await closeTradeNow(existing.id, exitReason);
+          closedTrades.push(existing.id);
+          results.push({
+            asset,
+            status: "trade_closed",
+            trade_id: existing.id,
+            direction: existing.direction,
+            score: kronos.kronos_score,
+            confidence: signalConfidence,
+            reason: exitReason,
+            pnl_absolute: closed.pnl_absolute,
+            pnl_percent: closed.pnl_percent,
+          });
+          continue;
+        }
+      }
+
+      if (kronos.kronos_direction === "neutral") {
+        results.push({ asset, status: "skipped", reason: `Kronos neutral (score=${kronos.kronos_score})`, score: kronos.kronos_score, confidence: signalConfidence });
         continue;
       }
 
-      const direction: Direction =
-        kronos.kronos_direction === "bullish" ? "long" : "short";
+      if (signalConfidence < minConfidence) {
+        results.push({ asset, status: "skipped", reason: `Kronos score ${signalConfidence} < ${minConfidence}`, score: kronos.kronos_score, confidence: signalConfidence });
+        continue;
+      }
+
+      // Kein Duplikat wenn bereits offener Trade für dieses Asset
+      if (existing) {
+        results.push({ asset, status: "skipped", reason: "offene Position weiterhin valide", score: kronos.kronos_score, confidence: signalConfidence });
+        continue;
+      }
+
+      const direction: Direction = recommendedDirection;
 
       const { data: signal, error } = await supabase
         .from("signals")
@@ -203,7 +237,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
           kronos_score: kronos.kronos_score,
           final_score: kronos.kronos_score,
           final_direction: direction,
-          confidence: kronos.confidence,
+          confidence: signalConfidence,
           reasoning: `[Kronos-Scan · ${kronos.mode}] ${kronos.reasoning}`,
           status: "pending",
         })
@@ -220,7 +254,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
           signal_id: signal.id,
           direction,
           score: kronos.kronos_score,
-          confidence: kronos.confidence,
+          confidence: signalConfidence,
         });
       }
     } catch (err) {
@@ -236,7 +270,9 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     success: true,
     scanned: watchlist.length,
     signals_created: results.filter((r) => r.status === "signal_created").length,
+    trades_closed: closedTrades.length,
     auto_trade: autoTrade,
+    auto_close: autoClose,
     trades_executed: tradeExecution?.executed ?? 0,
     trades_skipped: tradeExecution?.skipped ?? 0,
     trade_details: tradeExecution?.details ?? [],
@@ -245,6 +281,24 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     results,
   });
 });
+
+function getKronosExitReason(
+  trade: DbPaperTrade,
+  recommendedDirection: Direction,
+  kronosScore: number,
+  entryScore: number,
+  exitScore: number
+): string | null {
+  if (recommendedDirection !== "neutral" && recommendedDirection !== trade.direction && kronosScore >= entryScore) {
+    return `Kronos Gegensignal ${recommendedDirection} mit Score ${kronosScore}`;
+  }
+
+  if (recommendedDirection === "neutral" || kronosScore < exitScore) {
+    return `Kronos Setup nicht mehr stark genug (Score ${kronosScore} < Exit ${exitScore})`;
+  }
+
+  return null;
+}
 
 // GET /api/signals/latest — Letzte Signale
 signalsRouter.get("/latest", async (req, res) => {
