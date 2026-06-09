@@ -23,7 +23,7 @@ export async function callWithTool<T>(params: {
     toolName,
     toolDescription,
     inputSchema,
-    model = "claude-opus-4-7",
+    model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5",
   } = params;
 
   const response = await anthropic.messages.create({
