@@ -1,6 +1,7 @@
 import { supabase } from "../services/supabase";
 import { getQuote } from "../services/finnhub";
 import { getPortfolioState, updateCashBalance } from "./portfolio";
+import { checkEntryFilters } from "./entryFilterEngine";
 import type { DbSignal, DbPaperTrade, Direction } from "../types";
 
 const MAX_POSITION = parseFloat(process.env.PAPER_TRADING_MAX_POSITION || "100");
@@ -141,6 +142,12 @@ async function executeSingleSignal(signal: DbSignal): Promise<{
     return { success: false, reason: riskGate.reason };
   }
 
+  const entryGate = await checkEntryFilters(signal, riskGate.openTrades);
+  if (!entryGate.allowed) {
+    await markSignalSkipped(signal.id, entryGate.reason);
+    return { success: false, reason: entryGate.reason };
+  }
+
   // Duplikat-Check: Bereits offener Trade für dieses Asset?
   const { data: existingTrade } = await supabase
     .from("paper_trades")
@@ -206,44 +213,47 @@ async function executeSingleSignal(signal: DbSignal): Promise<{
 async function checkPortfolioRiskGates(signal: DbSignal, cashBalance: number): Promise<{
   allowed: boolean;
   reason: string;
+  openTrades: DbPaperTrade[];
 }> {
   const { data: openTrades, error: openError } = await supabase
     .from("paper_trades")
-    .select("position_size")
+    .select("*")
     .eq("status", "open");
 
-  if (openError) return { allowed: false, reason: `Risk-Gate Fehler: ${openError.message}` };
+  if (openError) return { allowed: false, reason: `Risk-Gate Fehler: ${openError.message}`, openTrades: [] };
 
-  const openCount = openTrades?.length ?? 0;
+  const typedOpenTrades = (openTrades || []) as DbPaperTrade[];
+  const openCount = typedOpenTrades.length;
   if (openCount >= MAX_OPEN_POSITIONS) {
-    return { allowed: false, reason: `Max offene Positionen erreicht (${openCount}/${MAX_OPEN_POSITIONS})` };
+    return { allowed: false, reason: `Max offene Positionen erreicht (${openCount}/${MAX_OPEN_POSITIONS})`, openTrades: typedOpenTrades };
   }
 
-  const openExposure = (openTrades || []).reduce((sum, trade) => sum + Number(trade.position_size || 0), 0);
+  const openExposure = typedOpenTrades.reduce((sum, trade) => sum + Number(trade.position_size || 0), 0);
   const equity = cashBalance + openExposure;
   const projectedExposurePercent = equity > 0 ? ((openExposure + MAX_POSITION) / equity) * 100 : 100;
   if (projectedExposurePercent > MAX_EXPOSURE_PERCENT) {
-    return { allowed: false, reason: `Max Exposure überschritten (${projectedExposurePercent.toFixed(1)}% > ${MAX_EXPOSURE_PERCENT}%)` };
+    return { allowed: false, reason: `Max Exposure überschritten (${projectedExposurePercent.toFixed(1)}% > ${MAX_EXPOSURE_PERCENT}%)`, openTrades: typedOpenTrades };
   }
 
   const dailyLoss = await getTodayRealizedPnl();
   if (equity > 0 && dailyLoss < 0 && Math.abs(dailyLoss) >= equity * (MAX_DAILY_LOSS_PERCENT / 100)) {
-    return { allowed: false, reason: `Daily Loss Limit erreicht (${dailyLoss.toFixed(2)}€)` };
+    return { allowed: false, reason: `Daily Loss Limit erreicht (${dailyLoss.toFixed(2)}€)`, openTrades: typedOpenTrades };
   }
 
   const losingStreak = await getConsecutiveLosses();
   if (losingStreak >= MAX_CONSECUTIVE_LOSSES) {
-    return { allowed: false, reason: `Loss-Streak Cooldown (${losingStreak}/${MAX_CONSECUTIVE_LOSSES})` };
+    return { allowed: false, reason: `Loss-Streak Cooldown (${losingStreak}/${MAX_CONSECUTIVE_LOSSES})`, openTrades: typedOpenTrades };
   }
 
   if (signal.reasoning.startsWith("[Political Disclosure]") && signal.kronos_score < POLITICAL_CONFIRMATION_MIN_KRONOS) {
     return {
       allowed: false,
       reason: `Political Signal ohne Kronos-Bestätigung (${signal.kronos_score} < ${POLITICAL_CONFIRMATION_MIN_KRONOS})`,
+      openTrades: typedOpenTrades,
     };
   }
 
-  return { allowed: true, reason: "ok" };
+  return { allowed: true, reason: "ok", openTrades: typedOpenTrades };
 }
 
 async function getTodayRealizedPnl(): Promise<number> {
