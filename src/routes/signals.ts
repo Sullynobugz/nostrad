@@ -150,6 +150,8 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   ];
   const watchlist: string[] = req.body?.assets ?? envWatchlist ?? defaultWatchlist;
   const minConfidence = parseInt((req.body?.min_confidence ?? process.env.PAPER_TRADING_MIN_CONFIDENCE) || "65");
+  const minFinalScore = parseInt((req.body?.min_final_score ?? process.env.PAPER_TRADING_MIN_FINAL_SCORE) || "65");
+  const minEntryScore = Math.max(minConfidence, minFinalScore);
   const exitScore = parseInt((req.body?.exit_score ?? process.env.PAPER_TRADING_EXIT_SCORE) || "55");
   const takeProfitPercent = parseFloat((req.body?.take_profit_percent ?? process.env.PAPER_TRADING_TAKE_PROFIT_PERCENT) || "3");
   const stopLossPercent = parseFloat((req.body?.stop_loss_percent ?? process.env.PAPER_TRADING_STOP_LOSS_PERCENT) || "2");
@@ -224,8 +226,8 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
         continue;
       }
 
-      if (signalConfidence < minConfidence) {
-        results.push({ asset, status: "skipped", reason: `Kronos score ${signalConfidence} < ${minConfidence}`, score: kronos.kronos_score, confidence: signalConfidence });
+      if (signalConfidence < minEntryScore) {
+        results.push({ asset, status: "skipped", reason: `Kronos score ${signalConfidence} < entry ${minEntryScore}`, score: kronos.kronos_score, confidence: signalConfidence });
         continue;
       }
 
@@ -287,6 +289,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     auto_close: autoClose,
     take_profit_percent: takeProfitPercent,
     stop_loss_percent: stopLossPercent,
+    min_entry_score: minEntryScore,
     adaptive_risk: {
       atr_period: riskConfig.atrPeriod,
       stop_atr_multiplier: riskConfig.stopAtrMultiplier,

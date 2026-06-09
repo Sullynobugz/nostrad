@@ -76,16 +76,14 @@ async function executePendingSignalsInternal(options: {
     return { executed: 0, skipped: 0, details: ["Keine handelbaren Signale"] };
   }
 
-  const filteredSignals = options.demoMode
+  const candidateSignals = options.demoMode
     ? (signals as DbSignal[])
         .filter((signal) => signal.final_direction !== "neutral")
         .sort((a, b) => b.final_score - a.final_score || b.confidence - a.confidence)
         .slice(0, options.limit ?? 3)
-    : (signals as DbSignal[]).filter(
-        (signal) => signal.final_score >= MIN_FINAL_SCORE && signal.confidence >= MIN_CONFIDENCE
-      );
+    : (signals as DbSignal[]);
 
-  if (filteredSignals.length === 0) {
+  if (candidateSignals.length === 0) {
     return { executed: 0, skipped: 0, details: ["Keine handelbaren Signale"] };
   }
 
@@ -93,8 +91,16 @@ async function executePendingSignalsInternal(options: {
   let skipped = 0;
   const details: string[] = [];
 
-  for (const signal of filteredSignals) {
+  for (const signal of candidateSignals) {
     try {
+      if (!options.demoMode && (signal.final_score < MIN_FINAL_SCORE || signal.confidence < MIN_CONFIDENCE)) {
+        skipped++;
+        const reason = `Schwelle nicht erreicht (score=${signal.final_score}/${MIN_FINAL_SCORE}, confidence=${signal.confidence}/${MIN_CONFIDENCE})`;
+        await markSignalSkipped(signal.id, reason);
+        details.push(`✗ Übersprungen: ${signal.asset} — ${reason}`);
+        continue;
+      }
+
       const result = await executeSingleSignal(signal);
       if (result.success) {
         executed++;
