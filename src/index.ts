@@ -31,6 +31,9 @@ app.use("/api/reports", reportsRouter);
 
 // Dashboard Static Files
 app.use(express.static(path.join(__dirname, "../apps/dashboard/dist")));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "../apps/dashboard/dist/index.html"));
+});
 app.get("/dashboard", (req, res) => {
   res.sendFile(path.join(__dirname, "../apps/dashboard/dist/index.html"));
 });

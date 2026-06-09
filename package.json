@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc",
+    "build": "tsc && npm --prefix apps/dashboard ci && npm --prefix apps/dashboard run build",
     "start": "node dist/index.js",
     "close-trades": "ts-node src/paperTrading/closer.ts",
     "daily-report": "ts-node src/reports/dailyReport.ts"
