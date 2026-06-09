@@ -6,6 +6,7 @@ import { runPolymarketEngine } from "../engines/polymarketEngine";
 import { runKronosEngine } from "../engines/kronosEngine";
 import { runFinalSignalEngine } from "../engines/finalSignalEngine";
 import { searchReddit } from "../services/reddit";
+import { executeSignalIds } from "../paperTrading/executor";
 import type { DbEvent, Direction } from "../types";
 
 export const signalsRouter = Router();
@@ -139,9 +140,15 @@ signalsRouter.post("/process-queue", async (req, res) => {
 // Kein News-Ingest nötig. Kronos IS der Signal.
 signalsRouter.post("/kronos-scan", async (req, res) => {
   const envWatchlist = process.env.KRONOS_WATCHLIST?.split(",").map((s) => s.trim()).filter(Boolean);
-  const defaultWatchlist = ["BTC", "ETH", "SOL", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN"];
+  const defaultWatchlist = [
+    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX",
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", "NFLX", "COIN", "MSTR",
+    "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV", "USO", "TLT",
+  ];
   const watchlist: string[] = req.body?.assets ?? envWatchlist ?? defaultWatchlist;
   const minConfidence = parseInt((req.body?.min_confidence ?? process.env.PAPER_TRADING_MIN_CONFIDENCE) || "65");
+  const autoTrade = req.body?.auto_trade !== false;
+  const createdSignalIds: string[] = [];
 
   const results: Array<{
     asset: string;
@@ -206,6 +213,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
       if (error) {
         results.push({ asset, status: "error", error: error.message });
       } else {
+        createdSignalIds.push(signal.id);
         results.push({
           asset,
           status: "signal_created",
@@ -220,10 +228,18 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     }
   }
 
+  const tradeExecution = autoTrade && createdSignalIds.length > 0
+    ? await executeSignalIds(createdSignalIds)
+    : null;
+
   res.json({
     success: true,
     scanned: watchlist.length,
     signals_created: results.filter((r) => r.status === "signal_created").length,
+    auto_trade: autoTrade,
+    trades_executed: tradeExecution?.executed ?? 0,
+    trades_skipped: tradeExecution?.skipped ?? 0,
+    trade_details: tradeExecution?.details ?? [],
     skipped: results.filter((r) => r.status === "skipped").length,
     errors: results.filter((r) => r.status === "error").length,
     results,

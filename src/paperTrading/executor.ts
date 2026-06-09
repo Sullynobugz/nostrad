@@ -6,7 +6,7 @@ import type { DbSignal, DbPaperTrade, Direction } from "../types";
 const MAX_POSITION = parseFloat(process.env.PAPER_TRADING_MAX_POSITION || "100");
 const MIN_FINAL_SCORE = parseInt(process.env.PAPER_TRADING_MIN_FINAL_SCORE || "65");
 const MIN_CONFIDENCE = parseInt(process.env.PAPER_TRADING_MIN_CONFIDENCE || "65");
-const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA"]);
+const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX"]);
 
 // Prüft pending Signale und öffnet Trades wenn Kriterien erfüllt
 export async function executePendingSignals(): Promise<{
@@ -17,6 +17,19 @@ export async function executePendingSignals(): Promise<{
   return executePendingSignalsInternal({
     demoMode: false,
     limit: undefined,
+    signalIds: undefined,
+  });
+}
+
+export async function executeSignalIds(signalIds: string[]): Promise<{
+  executed: number;
+  skipped: number;
+  details: string[];
+}> {
+  return executePendingSignalsInternal({
+    demoMode: false,
+    limit: undefined,
+    signalIds,
   });
 }
 
@@ -28,22 +41,30 @@ export async function executeDemoSignals(limit = 3): Promise<{
   return executePendingSignalsInternal({
     demoMode: true,
     limit,
+    signalIds: undefined,
   });
 }
 
 async function executePendingSignalsInternal(options: {
   demoMode: boolean;
   limit?: number;
+  signalIds?: string[];
 }): Promise<{
   executed: number;
   skipped: number;
   details: string[];
 }> {
-  const { data: signals, error } = await supabase
+  let query = supabase
     .from("signals")
     .select("*")
     .eq("status", "pending")
     .order("created_at", { ascending: true });
+
+  if (options.signalIds?.length) {
+    query = query.in("id", options.signalIds);
+  }
+
+  const { data: signals, error } = await query;
 
   if (error) throw new Error(`Signals-Fetch fehlgeschlagen: ${error.message}`);
   if (!signals || signals.length === 0) {

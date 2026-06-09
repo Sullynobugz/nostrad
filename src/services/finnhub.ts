@@ -4,7 +4,7 @@ import type { OHLCV } from "../types";
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 const TWELVE_BASE = "https://api.twelvedata.com";
 const ALPHA_BASE = "https://www.alphavantage.co/query";
-const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA"]);
+const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX"]);
 
 function parseNumeric(value: unknown): number | null {
   const n = typeof value === "number" || typeof value === "string" ? Number(value) : NaN;
