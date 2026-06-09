@@ -152,6 +152,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   const minConfidence = parseInt((req.body?.min_confidence ?? process.env.PAPER_TRADING_MIN_CONFIDENCE) || "65");
   const minFinalScore = parseInt((req.body?.min_final_score ?? process.env.PAPER_TRADING_MIN_FINAL_SCORE) || "65");
   const minEntryScore = Math.max(minConfidence, minFinalScore);
+  const concurrency = Math.max(1, Math.min(6, parseInt((req.body?.concurrency ?? process.env.KRONOS_SCAN_CONCURRENCY) || "3")));
   const exitScore = parseInt((req.body?.exit_score ?? process.env.PAPER_TRADING_EXIT_SCORE) || "55");
   const takeProfitPercent = parseFloat((req.body?.take_profit_percent ?? process.env.PAPER_TRADING_TAKE_PROFIT_PERCENT) || "3");
   const stopLossPercent = parseFloat((req.body?.stop_loss_percent ?? process.env.PAPER_TRADING_STOP_LOSS_PERCENT) || "2");
@@ -178,7 +179,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     error?: string;
   }> = [];
 
-  for (const asset of watchlist) {
+  async function processAsset(asset: string): Promise<void> {
     try {
       const kronos = await runKronosEngine(asset);
       const signalConfidence = kronos.kronos_score;
@@ -217,24 +218,24 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
             pnl_absolute: closed.pnl_absolute,
             pnl_percent: closed.pnl_percent,
           });
-          continue;
+          return;
         }
       }
 
       if (kronos.kronos_direction === "neutral") {
         results.push({ asset, status: "skipped", reason: `Kronos neutral (score=${kronos.kronos_score})`, score: kronos.kronos_score, confidence: signalConfidence });
-        continue;
+        return;
       }
 
       if (signalConfidence < minEntryScore) {
         results.push({ asset, status: "skipped", reason: `Kronos score ${signalConfidence} < entry ${minEntryScore}`, score: kronos.kronos_score, confidence: signalConfidence });
-        continue;
+        return;
       }
 
       // Kein Duplikat wenn bereits offener Trade für dieses Asset
       if (existing) {
         results.push({ asset, status: "skipped", reason: "offene Position weiterhin valide", score: kronos.kronos_score, confidence: signalConfidence });
-        continue;
+        return;
       }
 
       const direction: Direction = recommendedDirection;
@@ -276,6 +277,8 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     }
   }
 
+  await runWithConcurrency(watchlist, concurrency, processAsset);
+
   const tradeExecution = autoTrade && createdSignalIds.length > 0
     ? await executeSignalIds(createdSignalIds)
     : null;
@@ -283,6 +286,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   res.json({
     success: true,
     scanned: watchlist.length,
+    concurrency,
     signals_created: results.filter((r) => r.status === "signal_created").length,
     trades_closed: closedTrades.length,
     auto_trade: autoTrade,
@@ -306,6 +310,21 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     results,
   });
 });
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex++];
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
+}
 
 function getKronosExitReason(
   trade: DbPaperTrade,
