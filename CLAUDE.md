@@ -135,3 +135,8 @@ HuggingFace-Cache per Volume persistent machen (kein Re-Download bei Neustart).
 | Datum | Was & Warum |
 |-------|-------------|
 | 2026-06-08 | MVP erstellt: 4 Engines, Supabase Schema, Express API, React Dashboard, 5 n8n Workflow-Specs |
+| 2026-06-08 | Bugfix: getQuote für Crypto nutzt jetzt BINANCE:BTCUSDT (BTC war $28 statt $64k) |
+| 2026-06-08 | Reset-Endpoint + Button im Dashboard (löscht alles, setzt Portfolio auf 1000€) |
+| 2026-06-08 | Kronos-Only-Modus: POST /api/signals/kronos-scan scannt Watchlist direkt ohne News-Ingest |
+| 2026-06-08 | Dashboard: Kronos Scan als Primär-Button, How-To-Guide komplett überarbeitet |
+| 2026-06-08 | Coolify: Alle Env-Vars gesetzt (UUID asr51f1mxdvu41kfly56eti1), Deploy scheitert an SSH-Auth für private Repo |
