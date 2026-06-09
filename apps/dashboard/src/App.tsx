@@ -7,7 +7,7 @@ import { PriceChart } from "./components/PriceChart";
 import { ActionBar } from "./components/ActionBar";
 import { useDashboard } from "./hooks/useData";
 
-type Page = "dashboard" | "signals" | "trades" | "events" | "performance" | "guide";
+type Page = "dashboard" | "signals" | "trades" | "events" | "performance" | "guide" | "glossary";
 
 const NAV: { id: Page; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -15,6 +15,7 @@ const NAV: { id: Page; label: string }[] = [
   { id: "trades", label: "Trades" },
   { id: "performance", label: "Engines" },
   { id: "guide", label: "How To Use" },
+  { id: "glossary", label: "Glossary" },
 ];
 
 export function App() {
@@ -125,7 +126,47 @@ export function App() {
         )}
 
         {page === "guide" && <HowToUse />}
+        {page === "glossary" && <TradingGlossary />}
       </main>
+    </div>
+  );
+}
+
+function TradingGlossary() {
+  const terms = [
+    ["Expectancy", "Durchschnittlicher erwarteter Gewinn pro Trade. Wichtiger als Winrate allein."],
+    ["Winrate", "Anteil gewonnener Trades. Eine hohe Winrate kann trotzdem unprofitabel sein, wenn Verluste größer sind."],
+    ["Risk/Reward", "Verhältnis zwischen riskiertem Verlust und möglichem Gewinn. 2R bedeutet Zielgewinn doppelt so groß wie Risiko."],
+    ["R-Multiple", "Gewinn oder Verlust gemessen in Einheiten des initialen Risikos. +2R ist ein Gewinn von zweimal Stop-Risiko."],
+    ["ATR", "Average True Range. Misst typische Schwankungsbreite und hilft, Stops assetgerecht zu setzen."],
+    ["Stop-Loss", "Regel zum Schließen eines Verlusttrades, bevor der Verlust zu groß wird."],
+    ["Take-Profit", "Regel zum Realisieren eines Gewinns bei erreichtem Ziel."],
+    ["Trailing Stop", "Stop, der einem Gewinner folgt und Gewinn schützt, wenn der Trade zurückläuft."],
+    ["Drawdown", "Rückgang vom bisherigen Equity-Hoch. Max Drawdown zeigt, wie hart eine Strategie zwischenzeitlich fällt."],
+    ["Profit Factor", "Bruttogewinne geteilt durch Bruttoverluste. Über 1 ist profitabel, höher ist besser."],
+    ["Sharpe", "Rendite im Verhältnis zur Volatilität. Nützlich, aber bei kleinen Stichproben instabil."],
+    ["Slippage", "Differenz zwischen erwartetem Preis und tatsächlichem Ausführungspreis."],
+    ["Liquidity", "Wie leicht ein Asset handelbar ist, ohne den Preis stark zu bewegen."],
+    ["Exposure", "Aktuell gebundenes Kapital im Markt. Zu hohe Exposure erhöht Portfolio-Risiko."],
+    ["Correlation", "Wie ähnlich sich Positionen bewegen. Viele Tech-Aktien sind oft faktisch derselbe Makro-Trade."],
+    ["Overtrading", "Zu viele Trades ohne klaren Edge. Häufiger Grund, warum gute Signale trotzdem Geld verlieren."],
+    ["Signal", "Nostrad-Einschätzung zu Asset, Richtung, Score und Begründung."],
+    ["Kronos Score", "Nostrad-Zeitreihen-/Chart-Score. Im Kronos-only Pfad ist das die zentrale Confidence."],
+    ["Political Disclosure", "Öffentlich gemeldeter Politiker-Trade. Verzögertes Signal, kein Beweis für Insiderwissen."],
+    ["Forward Test", "Live-Paper-Test ab jetzt. Wichtiger als überoptimierte historische Backtests."],
+  ];
+
+  return (
+    <div className="bg-terminal-card border border-terminal-border rounded-lg p-5 max-w-5xl">
+      <div className="text-[10px] uppercase tracking-widest text-terminal-muted mb-4">Trading Glossary</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+        {terms.map(([term, definition]) => (
+          <div key={term} className="py-3 border-b border-terminal-border">
+            <div className="text-[11px] uppercase tracking-wider text-terminal-blue font-semibold mb-1">{term}</div>
+            <div className="text-[11px] leading-5 text-terminal-muted">{definition}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

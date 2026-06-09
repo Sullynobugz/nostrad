@@ -6,6 +6,11 @@ import type { DbSignal, DbPaperTrade, Direction } from "../types";
 const MAX_POSITION = parseFloat(process.env.PAPER_TRADING_MAX_POSITION || "100");
 const MIN_FINAL_SCORE = parseInt(process.env.PAPER_TRADING_MIN_FINAL_SCORE || "65");
 const MIN_CONFIDENCE = parseInt(process.env.PAPER_TRADING_MIN_CONFIDENCE || "65");
+const MAX_OPEN_POSITIONS = parseInt(process.env.PAPER_TRADING_MAX_OPEN_POSITIONS || "5", 10);
+const MAX_EXPOSURE_PERCENT = parseFloat(process.env.PAPER_TRADING_MAX_EXPOSURE_PERCENT || "60");
+const MAX_DAILY_LOSS_PERCENT = parseFloat(process.env.PAPER_TRADING_MAX_DAILY_LOSS_PERCENT || "3");
+const MAX_CONSECUTIVE_LOSSES = parseInt(process.env.PAPER_TRADING_MAX_CONSECUTIVE_LOSSES || "3", 10);
+const POLITICAL_CONFIRMATION_MIN_KRONOS = parseInt(process.env.POLITICAL_CONFIRMATION_MIN_KRONOS || "65", 10);
 const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX"]);
 
 // Prüft pending Signale und öffnet Trades wenn Kriterien erfüllt
@@ -124,6 +129,12 @@ async function executeSingleSignal(signal: DbSignal): Promise<{
     return { success: false, reason: `Nicht genug Kapital (${portfolio.cash_balance.toFixed(2)}€ < ${MAX_POSITION}€)` };
   }
 
+  const riskGate = await checkPortfolioRiskGates(signal, portfolio.cash_balance);
+  if (!riskGate.allowed) {
+    await markSignalSkipped(signal.id, riskGate.reason);
+    return { success: false, reason: riskGate.reason };
+  }
+
   // Duplikat-Check: Bereits offener Trade für dieses Asset?
   const { data: existingTrade } = await supabase
     .from("paper_trades")
@@ -184,6 +195,80 @@ async function executeSingleSignal(signal: DbSignal): Promise<{
 
   console.log(`[Executor] Trade eröffnet: ${signal.asset} ${direction} @ ${entryPrice} (${positionSize}€)`);
   return { success: true, entry_price: entryPrice };
+}
+
+async function checkPortfolioRiskGates(signal: DbSignal, cashBalance: number): Promise<{
+  allowed: boolean;
+  reason: string;
+}> {
+  const { data: openTrades, error: openError } = await supabase
+    .from("paper_trades")
+    .select("position_size")
+    .eq("status", "open");
+
+  if (openError) return { allowed: false, reason: `Risk-Gate Fehler: ${openError.message}` };
+
+  const openCount = openTrades?.length ?? 0;
+  if (openCount >= MAX_OPEN_POSITIONS) {
+    return { allowed: false, reason: `Max offene Positionen erreicht (${openCount}/${MAX_OPEN_POSITIONS})` };
+  }
+
+  const openExposure = (openTrades || []).reduce((sum, trade) => sum + Number(trade.position_size || 0), 0);
+  const equity = cashBalance + openExposure;
+  const projectedExposurePercent = equity > 0 ? ((openExposure + MAX_POSITION) / equity) * 100 : 100;
+  if (projectedExposurePercent > MAX_EXPOSURE_PERCENT) {
+    return { allowed: false, reason: `Max Exposure überschritten (${projectedExposurePercent.toFixed(1)}% > ${MAX_EXPOSURE_PERCENT}%)` };
+  }
+
+  const dailyLoss = await getTodayRealizedPnl();
+  if (equity > 0 && dailyLoss < 0 && Math.abs(dailyLoss) >= equity * (MAX_DAILY_LOSS_PERCENT / 100)) {
+    return { allowed: false, reason: `Daily Loss Limit erreicht (${dailyLoss.toFixed(2)}€)` };
+  }
+
+  const losingStreak = await getConsecutiveLosses();
+  if (losingStreak >= MAX_CONSECUTIVE_LOSSES) {
+    return { allowed: false, reason: `Loss-Streak Cooldown (${losingStreak}/${MAX_CONSECUTIVE_LOSSES})` };
+  }
+
+  if (signal.reasoning.startsWith("[Political Disclosure]") && signal.kronos_score < POLITICAL_CONFIRMATION_MIN_KRONOS) {
+    return {
+      allowed: false,
+      reason: `Political Signal ohne Kronos-Bestätigung (${signal.kronos_score} < ${POLITICAL_CONFIRMATION_MIN_KRONOS})`,
+    };
+  }
+
+  return { allowed: true, reason: "ok" };
+}
+
+async function getTodayRealizedPnl(): Promise<number> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from("paper_trades")
+    .select("pnl_absolute")
+    .eq("status", "closed")
+    .gte("exit_time", todayStart.toISOString());
+
+  if (error || !data) return 0;
+  return data.reduce((sum, trade) => sum + Number(trade.pnl_absolute || 0), 0);
+}
+
+async function getConsecutiveLosses(): Promise<number> {
+  const { data, error } = await supabase
+    .from("paper_trades")
+    .select("pnl_absolute")
+    .eq("status", "closed")
+    .order("exit_time", { ascending: false })
+    .limit(MAX_CONSECUTIVE_LOSSES);
+
+  if (error || !data) return 0;
+  let losses = 0;
+  for (const trade of data) {
+    if (Number(trade.pnl_absolute || 0) < 0) losses++;
+    else break;
+  }
+  return losses;
 }
 
 async function markSignalSkipped(signalId: string, reason: string): Promise<void> {

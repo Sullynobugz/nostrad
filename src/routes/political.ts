@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { supabase } from "../services/supabase";
+import { runKronosEngine } from "../engines/kronosEngine";
 import { fetchPoliticalTrades, type PoliticalTrade } from "../services/politicalTrades";
 
 export const politicalRouter = Router();
@@ -25,6 +26,12 @@ politicalRouter.post("/scan", async (req, res) => {
     100,
     70
   );
+  const minKronosScore = clampInt(
+    req.body?.min_kronos_score ?? process.env.POLITICAL_CONFIRMATION_MIN_KRONOS,
+    1,
+    100,
+    65
+  );
 
   try {
     const trades = await fetchPoliticalTrades(limit);
@@ -34,6 +41,18 @@ politicalRouter.post("/scan", async (req, res) => {
       const score = scorePoliticalTrade(trade, { maxDisclosureAgeDays, minAmount });
       if (score.direction !== "long" || score.finalScore < minScore) {
         results.push({ asset: trade.asset, politician: trade.politician, status: "skipped", reason: score.reason, score: score.finalScore });
+        continue;
+      }
+
+      const kronos = await runKronosEngine(trade.asset);
+      if (kronos.kronos_direction !== "bullish" || kronos.kronos_score < minKronosScore) {
+        results.push({
+          asset: trade.asset,
+          politician: trade.politician,
+          status: "skipped",
+          reason: `Kronos bestätigt Political-Kauf nicht (${kronos.kronos_direction}, score=${kronos.kronos_score})`,
+          score: score.finalScore,
+        });
         continue;
       }
 
@@ -59,11 +78,11 @@ politicalRouter.post("/scan", async (req, res) => {
           event_score: score.finalScore,
           sentiment_score: 50,
           polymarket_score: 50,
-          kronos_score: 50,
-          final_score: score.finalScore,
+          kronos_score: kronos.kronos_score,
+          final_score: Math.round(score.finalScore * 0.6 + kronos.kronos_score * 0.4),
           final_direction: score.direction,
-          confidence: score.finalScore,
-          reasoning: score.reasoning || sourceUrl,
+          confidence: Math.round(score.finalScore * 0.6 + kronos.kronos_score * 0.4),
+          reasoning: `${score.reasoning || sourceUrl} Kronos bestätigt bullish mit Score ${kronos.kronos_score}.`,
           status: "pending",
         })
         .select()
