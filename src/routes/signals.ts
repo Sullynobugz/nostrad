@@ -11,9 +11,23 @@ import { executeSignalIds } from "../paperTrading/executor";
 import { closeTradeNow } from "../paperTrading/closer";
 import { markTradeToMarket } from "../paperTrading/portfolio";
 import { buildAdaptiveRiskPlan, getAdaptiveRiskConfig, getAdaptiveRiskExitReason } from "../paperTrading/riskEngine";
+import { beginRun, finishRun, getRunState, isRunStopRequested, requestRunStop } from "../services/runControl";
 import type { DbEvent, DbPaperTrade, Direction } from "../types";
 
 export const signalsRouter = Router();
+
+signalsRouter.get("/kronos-scan/status", (_req, res) => {
+  res.json(getRunState());
+});
+
+signalsRouter.post("/kronos-scan/stop", (_req, res) => {
+  const state = requestRunStop("kronos_scan");
+  res.json({
+    success: Boolean(state),
+    stopped: Boolean(state?.stopRequested),
+    state: state ?? getRunState(),
+  });
+});
 
 // POST /api/signals/generate — Signal für ein Event generieren
 signalsRouter.post("/generate", async (req, res) => {
@@ -143,6 +157,17 @@ signalsRouter.post("/process-queue", async (req, res) => {
 // POST /api/signals/kronos-scan — Watchlist mit Kronos scannen, Signale direkt erstellen
 // Kein News-Ingest nötig. Kronos IS der Signal.
 signalsRouter.post("/kronos-scan", async (req, res) => {
+  const run = beginRun("kronos_scan", "Kronos Scan");
+  if (!run) {
+    return res.status(409).json({
+      success: false,
+      error: "Ein Kronos Scan läuft bereits",
+      run: getRunState(),
+    });
+  }
+  const activeRun = run;
+
+  try {
   const envWatchlist = process.env.KRONOS_WATCHLIST?.split(",").map((s) => s.trim()).filter(Boolean);
   const defaultWatchlist = [
     "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX",
@@ -213,9 +238,19 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   }
 
   async function processAsset(asset: string): Promise<void> {
+    if (isRunStopRequested(activeRun.id)) {
+      results.push({ asset, status: "skipped", reason: "Scan gestoppt" });
+      return;
+    }
+
     try {
       const kronos = await runKronosEngine(asset);
       const signalConfidence = kronos.kronos_score;
+
+      if (isRunStopRequested(activeRun.id)) {
+        results.push({ asset, status: "skipped", reason: "Scan gestoppt" });
+        return;
+      }
 
       const { data: existing } = await supabase
         .from("paper_trades")
@@ -310,14 +345,16 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     }
   }
 
-  await runWithConcurrency(assetsToReview, concurrency, processAsset);
+  await runWithConcurrency(assetsToReview, concurrency, processAsset, () => isRunStopRequested(activeRun.id));
 
-  const tradeExecution = autoTrade && createdSignalIds.length > 0
+  const stopped = isRunStopRequested(activeRun.id);
+  const tradeExecution = autoTrade && !stopped && createdSignalIds.length > 0
     ? await executeSignalIds(createdSignalIds)
     : null;
 
-  res.json({
+  const response = {
     success: true,
+    stopped,
     scanned: watchlist.length,
     reviewed: assetsToReview.length,
     concurrency,
@@ -346,17 +383,26 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     skipped: results.filter((r) => r.status === "skipped").length,
     errors: results.filter((r) => r.status === "error").length,
     results,
-  });
+  };
+
+  finishRun(activeRun.id, stopped ? "stopped" : "done", stopped ? "Kronos Scan gestoppt" : "Kronos Scan fertig");
+  res.json(response);
+  } catch (err) {
+    finishRun(activeRun.id, "error", (err as Error).message);
+    res.status(500).json({ success: false, error: (err as Error).message });
+  }
 });
 
 async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
-  worker: (item: T) => Promise<void>
+  worker: (item: T) => Promise<void>,
+  shouldStop?: () => boolean
 ): Promise<void> {
   let nextIndex = 0;
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
     while (nextIndex < items.length) {
+      if (shouldStop?.()) return;
       const item = items[nextIndex++];
       await worker(item);
     }

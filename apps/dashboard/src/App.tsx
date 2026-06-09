@@ -8,6 +8,7 @@ import { ActionBar } from "./components/ActionBar";
 import { useDashboard } from "./hooks/useData";
 
 type Page = "dashboard" | "signals" | "trades" | "events" | "performance" | "lab" | "guide" | "glossary";
+type RunStatusValue = "idle" | "running" | "stopped" | "done" | "error";
 
 const NAV: { id: Page; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -25,7 +26,7 @@ export function App() {
   const [runState, setRunState] = useState<{
     label: string | null;
     startedAt: string | null;
-    status: "idle" | "running" | "done" | "error";
+    status: RunStatusValue;
     openedTrades?: number;
   }>({ label: null, startedAt: null, status: "idle" });
   const [tradePing, setTradePing] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
@@ -157,7 +158,7 @@ function RunStatus({
   runState,
   tradePing,
 }: {
-  runState: { label: string | null; startedAt: string | null; status: "idle" | "running" | "done" | "error"; openedTrades?: number };
+  runState: { label: string | null; startedAt: string | null; status: RunStatusValue; openedTrades?: number };
   tradePing: { visible: boolean; count: number };
 }) {
   const isRunning = runState.status === "running";
@@ -168,6 +169,8 @@ function RunStatus({
     runState.status === "running"
       ? "text-terminal-yellow border-terminal-yellow/40 bg-terminal-yellow/10"
       : runState.status === "error"
+      ? "text-terminal-red border-terminal-red/40 bg-terminal-red/10"
+      : runState.status === "stopped"
       ? "text-terminal-red border-terminal-red/40 bg-terminal-red/10"
       : runState.status === "done"
       ? "text-terminal-green border-terminal-green/40 bg-terminal-green/10"

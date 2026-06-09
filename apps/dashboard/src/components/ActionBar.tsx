@@ -1,12 +1,15 @@
 import { useState } from "react";
+import { StopCircle } from "lucide-react";
 import { api } from "../lib/api";
+
+type RunStatus = "idle" | "running" | "stopped" | "done" | "error";
 
 interface Props {
   onRefresh: () => void;
   onRunStateChange?: (state: {
     label: string | null;
     startedAt: string | null;
-    status: "idle" | "running" | "done" | "error";
+    status: RunStatus;
     openedTrades?: number;
   }) => void;
 }
@@ -15,14 +18,17 @@ export function ActionBar({ onRefresh, onRunStateChange }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [activeStartedAt, setActiveStartedAt] = useState<string | null>(null);
 
   async function run(label: string, action: () => Promise<any>) {
     const startedAt = new Date().toISOString();
     setLoading(label);
+    setActiveStartedAt(startedAt);
     setResult(null);
     onRunStateChange?.({ label, startedAt, status: "running" });
     try {
       const res = await action();
+      const stopped = Boolean(res.stopped);
       const summary = res.executed != null
         ? `${res.executed} trades eröffnet, ${res.skipped} übersprungen`
         : res.trades_executed != null
@@ -36,12 +42,12 @@ export function ActionBar({ onRefresh, onRunStateChange }: Props) {
         : res.steps
         ? res.steps.slice(-1)[0]
         : "OK";
-      setResult(`✓ ${label}: ${summary}`);
+      setResult(stopped ? `■ ${label}: gestoppt` : `✓ ${label}: ${summary}`);
       onRunStateChange?.({
         label,
         startedAt,
-        status: "done",
-        openedTrades: Number(res.trades_executed ?? res.executed ?? 0),
+        status: stopped ? "stopped" : "done",
+        openedTrades: stopped ? 0 : Number(res.trades_executed ?? res.executed ?? 0),
       });
       onRefresh();
     } catch (err) {
@@ -49,12 +55,31 @@ export function ActionBar({ onRefresh, onRunStateChange }: Props) {
       onRunStateChange?.({ label, startedAt, status: "error" });
     } finally {
       setLoading(null);
+      setActiveStartedAt(null);
     }
   }
 
   async function handleReset() {
     setShowResetConfirm(false);
     await run("Reset", () => api.resetPortfolio());
+  }
+
+  async function handleStopRun() {
+    try {
+      const res = await api.stopKronosScan();
+      const stopped = Boolean(res.stopped);
+      setResult(stopped ? "■ Stop angefordert: Scan läuft aus" : "■ Kein aktiver Kronos Scan");
+      if (stopped) {
+        onRunStateChange?.({
+          label: loading || "Kronos Scan",
+          startedAt: activeStartedAt,
+          status: "stopped",
+          openedTrades: 0,
+        });
+      }
+    } catch (err) {
+      setResult(`✗ Stop fehlgeschlagen: ${(err as Error).message}`);
+    }
   }
 
   async function downloadDailyReport() {
@@ -112,6 +137,15 @@ export function ActionBar({ onRefresh, onRunStateChange }: Props) {
           className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded border border-terminal-red/40 text-terminal-red/70 hover:border-terminal-red hover:text-terminal-red hover:bg-terminal-red/5 transition-colors disabled:opacity-40"
         >
           Reset
+        </button>
+
+        <button
+          onClick={handleStopRun}
+          disabled={loading !== "Kronos Scan"}
+          className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded border border-terminal-red/60 text-terminal-red hover:bg-terminal-red/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <StopCircle size={13} />
+          Stop Run
         </button>
 
         {result && (
