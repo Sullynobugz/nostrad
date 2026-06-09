@@ -6,7 +6,7 @@ Persönliches Paper-Trading-Research-System. Testet mit virtuellem Kapital (1.00
 **Status**: Aktiv — MVP in Entwicklung
 
 ## Was gerade wirklich läuft
-`npm install` noch nicht ausgeführt. Strukturell fertig, alle Module geschrieben. API-Keys ausstehend.
+Backend läuft lokal auf Port 3000. Alle API-Keys gesetzt. Supabase-Schema deployed + Reset-Permissions migriert. Kronos-Only-Modus aktiv (`KRONOS_MODE=native`). Coolify-Deploy noch ausstehend (Repo war private → SSH-Auth-Fehler, Fix: kurz public machen → deployen → wieder private + Deploy Key eintragen).
 
 ## Tech Stack
 - **Backend:** TypeScript + Express (Node.js)
@@ -78,11 +78,10 @@ npm run daily-report    # Report generieren
 
 ## Nächste Schritte
 
-1. **Supabase Migration** ausführen (`supabase/migrations.sql`)
-2. **`.env`** befüllen: `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `FINNHUB_API_KEY`
-3. **`npm install`** in Root und `apps/dashboard`
-4. **`npm run dev`** starten und `/health` aufrufen
-5. **n8n Workflows** anlegen nach `workflows/0*.md`
+1. **Coolify Deploy** — Repo kurz auf Public → Deploy klicken → danach wieder Private
+2. **Deploy Key** einrichten: `ssh root@167.233.30.113 "cat /root/.ssh/id_rsa.pub"` → in GitHub → nostrad → Settings → Deploy keys (ohne Write Access)
+3. **n8n Workflow importieren** — `workflows/n8n-import-nostrad.json` in n8n laden, HOST durch Coolify-URL ersetzen, aktivieren
+4. **Kronos python-Modus** (optional, später): Kronos-Service als zweiten Coolify-Service deployen → `KRONOS_MODE=python`
 
 ## API Keys benötigt
 
