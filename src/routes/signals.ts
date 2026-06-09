@@ -9,6 +9,7 @@ import { searchReddit } from "../services/reddit";
 import { executeSignalIds } from "../paperTrading/executor";
 import { closeTradeNow } from "../paperTrading/closer";
 import { markTradeToMarket } from "../paperTrading/portfolio";
+import { buildAdaptiveRiskPlan, getAdaptiveRiskConfig, getAdaptiveRiskExitReason } from "../paperTrading/riskEngine";
 import type { DbEvent, DbPaperTrade, Direction } from "../types";
 
 export const signalsRouter = Router();
@@ -152,6 +153,10 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   const exitScore = parseInt((req.body?.exit_score ?? process.env.PAPER_TRADING_EXIT_SCORE) || "55");
   const takeProfitPercent = parseFloat((req.body?.take_profit_percent ?? process.env.PAPER_TRADING_TAKE_PROFIT_PERCENT) || "3");
   const stopLossPercent = parseFloat((req.body?.stop_loss_percent ?? process.env.PAPER_TRADING_STOP_LOSS_PERCENT) || "2");
+  const riskConfig = getAdaptiveRiskConfig({
+    fallbackTakeProfitPercent: takeProfitPercent,
+    fallbackStopLossPercent: stopLossPercent,
+  });
   const autoTrade = req.body?.auto_trade !== false;
   const autoClose = req.body?.auto_close !== false;
   const createdSignalIds: string[] = [];
@@ -192,8 +197,9 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
 
       if (existing && autoClose) {
         const markedTrade = await markTradeToMarket(existing as DbPaperTrade);
+        const riskPlan = await buildAdaptiveRiskPlan(asset, riskConfig, existing as DbPaperTrade);
         const exitReason =
-          getRiskExitReason(markedTrade.unrealized_pnl_percent, takeProfitPercent, stopLossPercent) ??
+          getAdaptiveRiskExitReason(existing as DbPaperTrade, markedTrade, riskPlan) ??
           getKronosExitReason(existing as DbPaperTrade, recommendedDirection, signalConfidence, minConfidence, exitScore);
         if (exitReason) {
           const closed = await closeTradeNow(existing.id, exitReason);
@@ -281,6 +287,13 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     auto_close: autoClose,
     take_profit_percent: takeProfitPercent,
     stop_loss_percent: stopLossPercent,
+    adaptive_risk: {
+      atr_period: riskConfig.atrPeriod,
+      stop_atr_multiplier: riskConfig.stopAtrMultiplier,
+      reward_risk_ratio: riskConfig.rewardRiskRatio,
+      trailing_start_r: riskConfig.trailingStartR,
+      trailing_atr_multiplier: riskConfig.trailingAtrMultiplier,
+    },
     exit_score: exitScore,
     trades_executed: tradeExecution?.executed ?? 0,
     trades_skipped: tradeExecution?.skipped ?? 0,
@@ -290,21 +303,6 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     results,
   });
 });
-
-function getRiskExitReason(
-  pnlPercent: number | null | undefined,
-  takeProfitPercent: number,
-  stopLossPercent: number
-): string | null {
-  if (pnlPercent == null) return null;
-  if (pnlPercent >= takeProfitPercent) {
-    return `Take-Profit erreicht (${pnlPercent.toFixed(2)}% >= ${takeProfitPercent}%)`;
-  }
-  if (pnlPercent <= -stopLossPercent) {
-    return `Stop-Loss erreicht (${pnlPercent.toFixed(2)}% <= -${stopLossPercent}%)`;
-  }
-  return null;
-}
 
 function getKronosExitReason(
   trade: DbPaperTrade,
