@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PortfolioCard } from "./components/PortfolioCard";
 import { SignalFeed } from "./components/SignalFeed";
 import { TradeTable } from "./components/TradeTable";
@@ -21,7 +21,22 @@ const NAV: { id: Page; label: string }[] = [
 export function App() {
   const [page, setPage] = useState<Page>("dashboard");
   const [chartAsset, setChartAsset] = useState("BTC");
+  const [runState, setRunState] = useState<{
+    label: string | null;
+    startedAt: string | null;
+    status: "idle" | "running" | "done" | "error";
+    openedTrades?: number;
+  }>({ label: null, startedAt: null, status: "idle" });
+  const [tradePing, setTradePing] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
   const { portfolio, openTrades, signals, history } = useDashboard();
+
+  useEffect(() => {
+    if (runState.status === "done" && (runState.openedTrades || 0) > 0) {
+      setTradePing({ visible: true, count: runState.openedTrades || 0 });
+      const timer = window.setTimeout(() => setTradePing({ visible: false, count: 0 }), 5000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [runState]);
 
   function refetchAll() {
     portfolio.refetch();
@@ -76,8 +91,8 @@ export function App() {
       {/* Main */}
       <main className="flex-1 overflow-auto p-4 space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="bg-terminal-card border border-terminal-border rounded-lg px-4 py-3 flex flex-wrap items-center gap-4 justify-between">
+          <div className="min-w-40">
             <h1 className="text-sm font-semibold tracking-wide text-terminal-text uppercase">
               {NAV.find((n) => n.id === page)?.label}
             </h1>
@@ -85,7 +100,8 @@ export function App() {
               {new Date().toLocaleDateString("de-DE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
             </p>
           </div>
-          <ActionBar onRefresh={refetchAll} />
+          <RunStatus runState={runState} tradePing={tradePing} />
+          <ActionBar onRefresh={refetchAll} onRunStateChange={setRunState} />
         </div>
 
         {/* Dashboard */}
@@ -128,6 +144,48 @@ export function App() {
         {page === "guide" && <HowToUse />}
         {page === "glossary" && <TradingGlossary />}
       </main>
+    </div>
+  );
+}
+
+function RunStatus({
+  runState,
+  tradePing,
+}: {
+  runState: { label: string | null; startedAt: string | null; status: "idle" | "running" | "done" | "error"; openedTrades?: number };
+  tradePing: { visible: boolean; count: number };
+}) {
+  const isRunning = runState.status === "running";
+  const started = runState.startedAt
+    ? new Date(runState.startedAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "--:--:--";
+  const statusColor =
+    runState.status === "running"
+      ? "text-terminal-yellow border-terminal-yellow/40 bg-terminal-yellow/10"
+      : runState.status === "error"
+      ? "text-terminal-red border-terminal-red/40 bg-terminal-red/10"
+      : runState.status === "done"
+      ? "text-terminal-green border-terminal-green/40 bg-terminal-green/10"
+      : "text-terminal-muted border-terminal-border";
+
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      <div className={`border rounded px-3 py-2 ${statusColor}`}>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-terminal-yellow animate-pulse" : "bg-current"}`} />
+          <span className="text-[10px] uppercase tracking-widest font-mono">
+            {runState.label || "Idle"}
+          </span>
+        </div>
+        <div className="text-[9px] text-terminal-muted mt-1 font-mono">started {started}</div>
+      </div>
+      {tradePing.visible && (
+        <div className="relative border border-terminal-green/60 bg-terminal-green/10 text-terminal-green rounded px-3 py-2">
+          <div className="absolute -inset-1 rounded border border-terminal-green/30 animate-ping" />
+          <div className="relative text-[10px] uppercase tracking-widest font-mono">Trade Opened</div>
+          <div className="relative text-[9px] font-mono">{tradePing.count} new position{tradePing.count === 1 ? "" : "s"}</div>
+        </div>
+      )}
     </div>
   );
 }

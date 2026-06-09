@@ -3,16 +3,24 @@ import { api } from "../lib/api";
 
 interface Props {
   onRefresh: () => void;
+  onRunStateChange?: (state: {
+    label: string | null;
+    startedAt: string | null;
+    status: "idle" | "running" | "done" | "error";
+    openedTrades?: number;
+  }) => void;
 }
 
-export function ActionBar({ onRefresh }: Props) {
+export function ActionBar({ onRefresh, onRunStateChange }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   async function run(label: string, action: () => Promise<any>) {
+    const startedAt = new Date().toISOString();
     setLoading(label);
     setResult(null);
+    onRunStateChange?.({ label, startedAt, status: "running" });
     try {
       const res = await action();
       const summary = res.executed != null
@@ -29,9 +37,16 @@ export function ActionBar({ onRefresh }: Props) {
         ? res.steps.slice(-1)[0]
         : "OK";
       setResult(`✓ ${label}: ${summary}`);
+      onRunStateChange?.({
+        label,
+        startedAt,
+        status: "done",
+        openedTrades: Number(res.trades_executed ?? res.executed ?? 0),
+      });
       onRefresh();
     } catch (err) {
       setResult(`✗ Fehler: ${(err as Error).message}`);
+      onRunStateChange?.({ label, startedAt, status: "error" });
     } finally {
       setLoading(null);
     }
