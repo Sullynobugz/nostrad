@@ -5,6 +5,7 @@ import { runSentimentEngine } from "../engines/sentimentEngine";
 import { runPolymarketEngine } from "../engines/polymarketEngine";
 import { runKronosEngine } from "../engines/kronosEngine";
 import { runFinalSignalEngine } from "../engines/finalSignalEngine";
+import { runPreScreen } from "../engines/preScreenEngine";
 import { searchReddit } from "../services/reddit";
 import { executeSignalIds } from "../paperTrading/executor";
 import { closeTradeNow } from "../paperTrading/closer";
@@ -153,6 +154,9 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   const minFinalScore = parseInt((req.body?.min_final_score ?? process.env.PAPER_TRADING_MIN_FINAL_SCORE) || "65");
   const minEntryScore = Math.max(minConfidence, minFinalScore);
   const concurrency = Math.max(1, Math.min(6, parseInt((req.body?.concurrency ?? process.env.KRONOS_SCAN_CONCURRENCY) || "3")));
+  const preScreenEnabled = String(req.body?.prescreen_enabled ?? process.env.KRONOS_PRESCREEN_ENABLED ?? "false") === "true";
+  const preScreenTopN = Math.max(1, Math.min(watchlist.length, parseInt((req.body?.prescreen_top_n ?? process.env.KRONOS_PRESCREEN_TOP_N) || "8")));
+  const preScreenMinScore = parseInt((req.body?.prescreen_min_score ?? process.env.KRONOS_PRESCREEN_MIN_SCORE) || "45");
   const exitScore = parseInt((req.body?.exit_score ?? process.env.PAPER_TRADING_EXIT_SCORE) || "55");
   const takeProfitPercent = parseFloat((req.body?.take_profit_percent ?? process.env.PAPER_TRADING_TAKE_PROFIT_PERCENT) || "3");
   const stopLossPercent = parseFloat((req.body?.stop_loss_percent ?? process.env.PAPER_TRADING_STOP_LOSS_PERCENT) || "2");
@@ -178,6 +182,35 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     pnl_percent?: number;
     error?: string;
   }> = [];
+
+  const { data: openForReview } = await supabase
+    .from("paper_trades")
+    .select("asset")
+    .eq("status", "open");
+  const openAssets = new Set((openForReview || []).map((trade) => String(trade.asset).toUpperCase()));
+
+  let assetsToReview = watchlist;
+  let preScreenResults: Awaited<ReturnType<typeof runPreScreen>>[] = [];
+
+  if (preScreenEnabled) {
+    preScreenResults = await Promise.all(watchlist.map((asset) => runPreScreen(asset)));
+    const ranked = [...preScreenResults]
+      .filter((result) => result.score >= preScreenMinScore || result.force_review || openAssets.has(result.asset))
+      .sort((a, b) => Number(openAssets.has(b.asset)) - Number(openAssets.has(a.asset)) || b.score - a.score);
+    assetsToReview = [...new Set(ranked.slice(0, preScreenTopN).map((result) => result.asset))];
+
+    for (const result of preScreenResults) {
+      if (!assetsToReview.includes(result.asset)) {
+        results.push({
+          asset: result.asset,
+          status: "skipped",
+          reason: `PreScreen filtered: ${result.reason}`,
+          score: result.score,
+          confidence: result.score,
+        });
+      }
+    }
+  }
 
   async function processAsset(asset: string): Promise<void> {
     try {
@@ -277,7 +310,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     }
   }
 
-  await runWithConcurrency(watchlist, concurrency, processAsset);
+  await runWithConcurrency(assetsToReview, concurrency, processAsset);
 
   const tradeExecution = autoTrade && createdSignalIds.length > 0
     ? await executeSignalIds(createdSignalIds)
@@ -286,7 +319,12 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   res.json({
     success: true,
     scanned: watchlist.length,
+    reviewed: assetsToReview.length,
     concurrency,
+    prescreen_enabled: preScreenEnabled,
+    prescreen_top_n: preScreenTopN,
+    prescreen_min_score: preScreenMinScore,
+    prescreen_results: preScreenResults,
     signals_created: results.filter((r) => r.status === "signal_created").length,
     trades_closed: closedTrades.length,
     auto_trade: autoTrade,
