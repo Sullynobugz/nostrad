@@ -24,6 +24,10 @@ interface Props {
 }
 
 export function TradeTable({ trades, title, showOpen = false }: Props) {
+  const headers = showOpen
+    ? ["Asset", "Dir", "Entry", "Current", "Size", "uPnL", "Hours"]
+    : ["Asset", "Dir", "Entry", "Exit", "Size", "PnL", "Status"];
+
   return (
     <div className="bg-terminal-card border border-terminal-border rounded-lg flex flex-col">
       <div className="px-4 py-3 border-b border-terminal-border flex items-center justify-between">
@@ -34,7 +38,7 @@ export function TradeTable({ trades, title, showOpen = false }: Props) {
         <table className="w-full text-xs font-mono">
           <thead>
             <tr className="border-b border-terminal-border">
-              {["Asset", "Dir", "Entry", "Exit", "Size", "PnL", showOpen ? "Hours" : "Status"].map((h) => (
+              {headers.map((h) => (
                 <th key={h} className="px-4 py-2 text-left text-[9px] uppercase tracking-widest text-terminal-muted font-normal">
                   {h}
                 </th>

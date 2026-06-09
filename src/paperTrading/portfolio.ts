@@ -67,7 +67,7 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
   };
 }
 
-async function markTradeToMarket(trade: DbPaperTrade): Promise<OpenPaperTrade> {
+export async function markTradeToMarket(trade: DbPaperTrade): Promise<OpenPaperTrade> {
   const hoursOpen = (Date.now() - new Date(trade.entry_time).getTime()) / 3600000;
 
   try {

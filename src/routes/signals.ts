@@ -8,6 +8,7 @@ import { runFinalSignalEngine } from "../engines/finalSignalEngine";
 import { searchReddit } from "../services/reddit";
 import { executeSignalIds } from "../paperTrading/executor";
 import { closeTradeNow } from "../paperTrading/closer";
+import { markTradeToMarket } from "../paperTrading/portfolio";
 import type { DbEvent, DbPaperTrade, Direction } from "../types";
 
 export const signalsRouter = Router();
@@ -149,6 +150,8 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
   const watchlist: string[] = req.body?.assets ?? envWatchlist ?? defaultWatchlist;
   const minConfidence = parseInt((req.body?.min_confidence ?? process.env.PAPER_TRADING_MIN_CONFIDENCE) || "65");
   const exitScore = parseInt((req.body?.exit_score ?? process.env.PAPER_TRADING_EXIT_SCORE) || "55");
+  const takeProfitPercent = parseFloat((req.body?.take_profit_percent ?? process.env.PAPER_TRADING_TAKE_PROFIT_PERCENT) || "3");
+  const stopLossPercent = parseFloat((req.body?.stop_loss_percent ?? process.env.PAPER_TRADING_STOP_LOSS_PERCENT) || "2");
   const autoTrade = req.body?.auto_trade !== false;
   const autoClose = req.body?.auto_close !== false;
   const createdSignalIds: string[] = [];
@@ -188,7 +191,10 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
           : "neutral";
 
       if (existing && autoClose) {
-        const exitReason = getKronosExitReason(existing as DbPaperTrade, recommendedDirection, signalConfidence, minConfidence, exitScore);
+        const markedTrade = await markTradeToMarket(existing as DbPaperTrade);
+        const exitReason =
+          getRiskExitReason(markedTrade.unrealized_pnl_percent, takeProfitPercent, stopLossPercent) ??
+          getKronosExitReason(existing as DbPaperTrade, recommendedDirection, signalConfidence, minConfidence, exitScore);
         if (exitReason) {
           const closed = await closeTradeNow(existing.id, exitReason);
           closedTrades.push(existing.id);
@@ -273,6 +279,9 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     trades_closed: closedTrades.length,
     auto_trade: autoTrade,
     auto_close: autoClose,
+    take_profit_percent: takeProfitPercent,
+    stop_loss_percent: stopLossPercent,
+    exit_score: exitScore,
     trades_executed: tradeExecution?.executed ?? 0,
     trades_skipped: tradeExecution?.skipped ?? 0,
     trade_details: tradeExecution?.details ?? [],
@@ -281,6 +290,21 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     results,
   });
 });
+
+function getRiskExitReason(
+  pnlPercent: number | null | undefined,
+  takeProfitPercent: number,
+  stopLossPercent: number
+): string | null {
+  if (pnlPercent == null) return null;
+  if (pnlPercent >= takeProfitPercent) {
+    return `Take-Profit erreicht (${pnlPercent.toFixed(2)}% >= ${takeProfitPercent}%)`;
+  }
+  if (pnlPercent <= -stopLossPercent) {
+    return `Stop-Loss erreicht (${pnlPercent.toFixed(2)}% <= -${stopLossPercent}%)`;
+  }
+  return null;
+}
 
 function getKronosExitReason(
   trade: DbPaperTrade,
