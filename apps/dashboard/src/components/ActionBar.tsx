@@ -42,11 +42,25 @@ export function ActionBar({ onRefresh }: Props) {
     await run("Reset", () => api.resetPortfolio());
   }
 
+  async function downloadDailyReport() {
+    const markdown = await api.dailyReportMarkdown();
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().split("T")[0];
+    a.href = url;
+    a.download = `nostrad-daily-report-${date}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    return { downloaded: true };
+  }
+
   const actions = [
     { label: "Kronos Scan", action: () => api.kronosScan(), highlight: true },
     { label: "Political Scan", action: () => api.politicalScan(), highlight: false },
     { label: "Execute Signals", action: () => api.executeSignals(), highlight: false },
     { label: "Close Expired", action: () => api.closeExpired(), highlight: false },
+    { label: "Daily Report", action: downloadDailyReport, highlight: false },
     { label: "Ingest + Queue", action: async () => {
         await api.runIngest();
         return api.processSignalQueue();

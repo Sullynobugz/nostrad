@@ -16,6 +16,12 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function getText(path: string): Promise<string> {
+  const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
+  return res.text();
+}
+
 export const api = {
   portfolio: () => get<any>("/trades/portfolio"),
   openTrades: () => get<any[]>("/trades/open"),
@@ -23,6 +29,7 @@ export const api = {
   signals: (limit = 30) => get<any[]>(`/signals/latest?limit=${limit}`),
   snapshots: (limit = 30) => get<any[]>(`/reports/snapshots?limit=${limit}`),
   dailyReport: () => get<any>("/reports/daily"),
+  dailyReportMarkdown: () => getText("/reports/daily/markdown"),
   enginePerformance: () => get<any[]>("/reports/performance"),
   runIngest: () => post<any>("/ingest/run"),
   processSignalQueue: () => post<any>("/signals/process-queue"),

@@ -1,7 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import { createChart, ColorType, CrosshairMode } from "lightweight-charts";
 
-const ASSETS = ["BTC", "ETH", "SPY", "QQQ", "NVDA", "TSLA"];
+const MARKETS = [
+  { symbol: "BTC", label: "Bitcoin", group: "Crypto" },
+  { symbol: "ETH", label: "Ethereum", group: "Crypto" },
+  { symbol: "SOL", label: "Solana", group: "Crypto" },
+  { symbol: "BNB", label: "BNB", group: "Crypto" },
+  { symbol: "XRP", label: "XRP", group: "Crypto" },
+  { symbol: "ADA", label: "Cardano", group: "Crypto" },
+  { symbol: "DOGE", label: "Dogecoin", group: "Crypto" },
+  { symbol: "AVAX", label: "Avalanche", group: "Crypto" },
+  { symbol: "SPY", label: "S&P 500 ETF", group: "ETFs" },
+  { symbol: "QQQ", label: "Nasdaq 100 ETF", group: "ETFs" },
+  { symbol: "IWM", label: "Russell 2000 ETF", group: "ETFs" },
+  { symbol: "DIA", label: "Dow Jones ETF", group: "ETFs" },
+  { symbol: "GLD", label: "Gold ETF", group: "ETFs" },
+  { symbol: "SLV", label: "Silver ETF", group: "ETFs" },
+  { symbol: "USO", label: "Oil ETF", group: "ETFs" },
+  { symbol: "TLT", label: "20Y Treasury ETF", group: "ETFs" },
+  { symbol: "AAPL", label: "Apple", group: "Stocks" },
+  { symbol: "MSFT", label: "Microsoft", group: "Stocks" },
+  { symbol: "NVDA", label: "NVIDIA", group: "Stocks" },
+  { symbol: "AMZN", label: "Amazon", group: "Stocks" },
+  { symbol: "GOOGL", label: "Alphabet", group: "Stocks" },
+  { symbol: "META", label: "Meta", group: "Stocks" },
+  { symbol: "TSLA", label: "Tesla", group: "Stocks" },
+  { symbol: "AMD", label: "AMD", group: "Stocks" },
+  { symbol: "NFLX", label: "Netflix", group: "Stocks" },
+  { symbol: "COIN", label: "Coinbase", group: "Stocks" },
+  { symbol: "MSTR", label: "MicroStrategy", group: "Stocks" },
+] as const;
 
 interface Props {
   asset: string;
@@ -96,21 +124,34 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
         requestAnimationFrame(() => chartRef.current?.timeScale().fitContent());
         setDataState(dataMode);
 
-        // Trade-Marker hinzufügen
-        const markers = trades
+        const entryMarkers = trades
           .filter((t) => t.asset === asset)
           .map((t) => ({
             time: t.entry_time?.split("T")[0],
             position: t.direction === "long" ? "belowBar" : "aboveBar",
             color: t.direction === "long" ? "#00d084" : "#ff4757",
             shape: t.direction === "long" ? "arrowUp" : "arrowDown",
-            text: `${t.direction.toUpperCase()} ${t.position_size}€`,
+            text: `ENTRY ${t.direction.toUpperCase()} ${t.position_size}€`,
           }))
           .filter((m) => m.time);
 
-        if (markers.length > 0) {
-          seriesRef.current.setMarkers(markers);
-        }
+        const exitMarkers = trades
+          .filter((t) => t.asset === asset && t.exit_time)
+          .map((t) => {
+            const pnl = Number(t.pnl_absolute || 0);
+            const pct = Number(t.pnl_percent || 0);
+            const sign = pnl >= 0 ? "+" : "";
+            return {
+              time: t.exit_time?.split("T")[0],
+              position: t.direction === "long" ? "aboveBar" : "belowBar",
+              color: pnl >= 0 ? "#00d084" : "#ff4757",
+              shape: "circle",
+              text: `EXIT ${sign}${pnl.toFixed(2)}€ ${sign}${pct.toFixed(2)}%`,
+            };
+          })
+          .filter((m) => m.time);
+
+        seriesRef.current.setMarkers([...entryMarkers, ...exitMarkers]);
       })
       .catch((err) => {
         setErrorMessage((err as Error).message);
@@ -124,11 +165,29 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
       <div className="px-4 py-3 border-b border-terminal-border flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-[10px] uppercase tracking-widest text-terminal-muted">Price Chart</span>
+          <span className="text-[10px] text-terminal-text font-mono">
+            {asset} <span className="text-terminal-muted">{MARKETS.find((m) => m.symbol === asset)?.label}</span>
+          </span>
           <span className={`text-[9px] uppercase tracking-widest ${dataState === "live" ? "text-terminal-green" : dataState === "demo" ? "text-terminal-yellow" : "text-terminal-muted"}`}>
             {dataState === "live" ? "LIVE" : dataState === "demo" ? "DEMO" : dataState === "loading" ? "LOADING" : dataState === "empty" ? "EMPTY" : "ERROR"}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <select
+            value={asset}
+            onChange={(e) => onAssetChange(e.target.value)}
+            className="bg-terminal-bg border border-terminal-border text-terminal-text text-[10px] font-mono rounded px-2 py-1 outline-none"
+          >
+            {["Crypto", "ETFs", "Stocks"].map((group) => (
+              <optgroup key={group} label={group}>
+                {MARKETS.filter((m) => m.group === group).map((m) => (
+                  <option key={m.symbol} value={m.symbol}>
+                    {m.symbol} - {m.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
           <button
             onClick={() => setDataMode("live")}
             className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${
@@ -149,19 +208,6 @@ export function PriceChart({ asset, onAssetChange, trades = [] }: Props) {
           >
             Demo
           </button>
-          {ASSETS.map((a) => (
-            <button
-              key={a}
-              onClick={() => onAssetChange(a)}
-              className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors ${
-                a === asset
-                  ? "bg-terminal-blue/20 text-terminal-blue border border-terminal-blue/40"
-                  : "text-terminal-muted hover:text-terminal-text"
-              }`}
-            >
-              {a}
-            </button>
-          ))}
         </div>
       </div>
       <div className="relative flex-1 min-h-0">

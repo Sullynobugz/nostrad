@@ -8,7 +8,7 @@ import { runEventEngine } from "../engines/eventEngine";
 import { runSentimentEngine } from "../engines/sentimentEngine";
 import type { RawNewsItem, RawRedditPost } from "../types";
 
-const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA"]);
+const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX"]);
 
 
 export const ingestRouter = Router();
