@@ -4,13 +4,17 @@ interface Trade {
   direction: string;
   entry_price: number;
   exit_price?: number;
+  current_price?: number;
   position_size: number;
   pnl_absolute?: number;
   pnl_percent?: number;
+  unrealized_pnl_absolute?: number;
+  unrealized_pnl_percent?: number;
   status: string;
   entry_time: string;
   exit_time?: string;
   hours_open?: number;
+  price_error?: string;
 }
 
 interface Props {
@@ -46,21 +50,28 @@ export function TradeTable({ trades, title, showOpen = false }: Props) {
               </tr>
             )}
             {trades.map((trade) => {
-              const pnl = trade.pnl_absolute ?? 0;
-              const pct = trade.pnl_percent ?? 0;
+              const pnl = trade.status === "open"
+                ? trade.unrealized_pnl_absolute ?? 0
+                : trade.pnl_absolute ?? 0;
+              const pct = trade.status === "open"
+                ? trade.unrealized_pnl_percent ?? 0
+                : trade.pnl_percent ?? 0;
               const pnlColor = pnl > 0 ? "text-terminal-green" : pnl < 0 ? "text-terminal-red" : "text-terminal-muted";
               const dirColor = trade.direction === "long" ? "text-terminal-green" : "text-terminal-red";
               const sign = pnl >= 0 ? "+" : "";
+              const displayExit = trade.status === "open"
+                ? trade.current_price?.toFixed(2) ?? "—"
+                : trade.exit_price?.toFixed(2) ?? "—";
 
               return (
                 <tr key={trade.id} className="hover:bg-terminal-hover transition-colors">
                   <td className="px-4 py-2 text-terminal-blue font-semibold">{trade.asset}</td>
                   <td className={`px-4 py-2 font-semibold ${dirColor}`}>{trade.direction.toUpperCase()}</td>
                   <td className="px-4 py-2 text-terminal-text">{trade.entry_price?.toFixed(2)}</td>
-                  <td className="px-4 py-2 text-terminal-muted">{trade.exit_price?.toFixed(2) ?? "—"}</td>
+                  <td className="px-4 py-2 text-terminal-muted">{displayExit}</td>
                   <td className="px-4 py-2 text-terminal-text">{trade.position_size?.toFixed(0)}€</td>
                   <td className={`px-4 py-2 ${pnlColor}`}>
-                    {trade.status === "open" ? "—" : `${sign}${pnl.toFixed(2)}€ (${sign}${pct.toFixed(2)}%)`}
+                    {trade.price_error ? "price err" : `${sign}${pnl.toFixed(2)}€ (${sign}${pct.toFixed(2)}%)`}
                   </td>
                   <td className="px-4 py-2 text-terminal-muted">
                     {showOpen

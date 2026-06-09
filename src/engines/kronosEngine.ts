@@ -107,7 +107,12 @@ Achte besonders auf:
 - Volumen-Trends (steigendes Volumen = stärkeres Signal)
 - Candlestick-Patterns (Doji, Engulfing, Hammer etc.)
 - RSI-approximierter Overbought/Oversold-Status
-- Support/Resistance Levels`;
+- Support/Resistance Levels
+
+Confidence ist eine kalibrierte Wahrscheinlichkeit deiner Prognose, nicht die Trading-Schwelle.
+Nutze keine Default-Confidence wie 65. Gib niedrige Werte (40-60) bei gemischter Evidenz,
+mittlere Werte (61-74) bei brauchbarer aber unsicherer Evidenz und hohe Werte (75-90)
+nur bei klarer Konvergenz mehrerer Indikatoren.`;
 
   const userMessage = `Analysiere die folgenden Candlestick-Daten für ${symbol}:
 

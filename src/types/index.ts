@@ -57,6 +57,15 @@ export interface DbPaperTrade {
   status: TradeStatus;
 }
 
+export interface OpenPaperTrade extends DbPaperTrade {
+  current_price?: number | null;
+  unrealized_pnl_absolute?: number | null;
+  unrealized_pnl_percent?: number | null;
+  current_value?: number | null;
+  hours_open?: number | null;
+  price_error?: string | null;
+}
+
 export interface DbPortfolioState {
   id: number;
   cash_balance: number;
@@ -163,7 +172,7 @@ export interface FinalSignalInput {
 
 export interface PortfolioSummary {
   cash_balance: number;
-  open_positions: DbPaperTrade[];
+  open_positions: OpenPaperTrade[];
   open_positions_value: number;
   total_equity: number;
   total_pnl: number;

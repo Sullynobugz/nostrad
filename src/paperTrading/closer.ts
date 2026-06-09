@@ -4,7 +4,7 @@ import { updateCashBalance, getPortfolioState, takeSnapshot } from "./portfolio"
 import type { DbPaperTrade } from "../types";
 
 const HOLD_HOURS = parseInt(process.env.PAPER_TRADING_HOLD_HOURS || "24");
-const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA"]);
+const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX"]);
 
 // Schließt alle Trades die älter als HOLD_HOURS Stunden sind
 export async function closeExpiredTrades(): Promise<{

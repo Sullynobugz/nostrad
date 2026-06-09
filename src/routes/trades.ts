@@ -2,7 +2,7 @@ import { Router } from "express";
 import { supabase } from "../services/supabase";
 import { executePendingSignals, executeDemoSignals } from "../paperTrading/executor";
 import { closeExpiredTrades } from "../paperTrading/closer";
-import { getPortfolioSummary, takeSnapshot } from "../paperTrading/portfolio";
+import { getOpenTradesMarked, getPortfolioSummary, takeSnapshot } from "../paperTrading/portfolio";
 
 export const tradesRouter = Router();
 
@@ -39,12 +39,12 @@ tradesRouter.post("/close-expired", async (req, res) => {
 
 // GET /api/trades/open — Offene Trades
 tradesRouter.get("/open", async (req, res) => {
-  const { data, error } = await supabase
-    .from("open_trades_with_signal")
-    .select("*");
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  try {
+    const trades = await getOpenTradesMarked();
+    res.json(trades);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // GET /api/trades/history — Trade-Historie

@@ -17,6 +17,8 @@ export function ActionBar({ onRefresh }: Props) {
       const res = await action();
       const summary = res.executed != null
         ? `${res.executed} trades eröffnet, ${res.skipped} übersprungen`
+        : res.trades_executed != null
+        ? `${res.signals_created ?? 0} signals, ${res.trades_executed} trades eröffnet, ${res.trades_skipped ?? 0} übersprungen`
         : res.closed != null
         ? `${res.closed} trades geschlossen`
         : res.inserted != null
