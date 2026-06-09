@@ -32,7 +32,8 @@ export function useDashboard() {
   const openTrades = usePolling(() => api.openTrades(), 15000);
   const signals = usePolling(() => api.signals(30), 20000);
   const history = usePolling(() => api.tradeHistory(50), 30000);
+  const performance = usePolling(() => api.tradePerformance(), 30000);
   const snapshots = usePolling(() => api.snapshots(30), 60000);
 
-  return { portfolio, openTrades, signals, history, snapshots };
+  return { portfolio, openTrades, signals, history, performance, snapshots };
 }

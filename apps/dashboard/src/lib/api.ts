@@ -26,6 +26,7 @@ export const api = {
   portfolio: () => get<any>("/trades/portfolio"),
   openTrades: () => get<any[]>("/trades/open"),
   tradeHistory: (limit = 50) => get<any[]>(`/trades/history?limit=${limit}`),
+  tradePerformance: () => get<any>("/trades/performance"),
   signals: (limit = 30) => get<any[]>(`/signals/latest?limit=${limit}`),
   snapshots: (limit = 30) => get<any[]>(`/reports/snapshots?limit=${limit}`),
   dailyReport: () => get<any>("/reports/daily"),

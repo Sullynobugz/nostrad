@@ -7,13 +7,14 @@ import { PriceChart } from "./components/PriceChart";
 import { ActionBar } from "./components/ActionBar";
 import { useDashboard } from "./hooks/useData";
 
-type Page = "dashboard" | "signals" | "trades" | "events" | "performance" | "guide" | "glossary";
+type Page = "dashboard" | "signals" | "trades" | "events" | "performance" | "lab" | "guide" | "glossary";
 
 const NAV: { id: Page; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "signals", label: "Signals" },
   { id: "trades", label: "Trades" },
   { id: "performance", label: "Engines" },
+  { id: "lab", label: "Lab" },
   { id: "guide", label: "How To Use" },
   { id: "glossary", label: "Glossary" },
 ];
@@ -28,7 +29,7 @@ export function App() {
     openedTrades?: number;
   }>({ label: null, startedAt: null, status: "idle" });
   const [tradePing, setTradePing] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
-  const { portfolio, openTrades, signals, history } = useDashboard();
+  const { portfolio, openTrades, signals, history, performance } = useDashboard();
 
   useEffect(() => {
     if (runState.status === "done" && (runState.openedTrades || 0) > 0) {
@@ -141,6 +142,10 @@ export function App() {
           </div>
         )}
 
+        {page === "lab" && (
+          <PerformanceLab performance={performance.data} />
+        )}
+
         {page === "guide" && <HowToUse />}
         {page === "glossary" && <TradingGlossary />}
       </main>
@@ -186,6 +191,99 @@ function RunStatus({
           <div className="relative text-[9px] font-mono">{tradePing.count} new position{tradePing.count === 1 ? "" : "s"}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PerformanceLab({ performance }: { performance: any }) {
+  const p = performance || {};
+  const metrics = [
+    ["Trades", p.count ?? 0, "text-terminal-text"],
+    ["Win Rate", `${(p.win_rate ?? 0).toFixed(1)}%`, (p.win_rate ?? 0) >= 50 ? "text-terminal-green" : "text-terminal-yellow"],
+    ["Total PnL", `${(p.total_pnl ?? 0) >= 0 ? "+" : ""}${(p.total_pnl ?? 0).toFixed(2)}€`, (p.total_pnl ?? 0) >= 0 ? "text-terminal-green" : "text-terminal-red"],
+    ["Expectancy", `${(p.expectancy ?? 0) >= 0 ? "+" : ""}${(p.expectancy ?? 0).toFixed(2)}€`, (p.expectancy ?? 0) >= 0 ? "text-terminal-green" : "text-terminal-red"],
+    ["Profit Factor", (p.profit_factor ?? 0) >= 900 ? "∞" : (p.profit_factor ?? 0).toFixed(2), (p.profit_factor ?? 0) >= 1 ? "text-terminal-green" : "text-terminal-red"],
+    ["Max DD", `${(p.max_drawdown ?? 0).toFixed(2)}€`, "text-terminal-red"],
+    ["Avg Win", `${(p.avg_win ?? 0).toFixed(2)}€`, "text-terminal-green"],
+    ["Avg Loss", `${(p.avg_loss ?? 0).toFixed(2)}€`, "text-terminal-red"],
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+        {metrics.map(([label, value, color]) => (
+          <div key={label} className="bg-terminal-card border border-terminal-border rounded-lg px-4 py-3">
+            <div className="text-[9px] uppercase tracking-widest text-terminal-muted mb-1">{label}</div>
+            <div className={`text-lg font-mono font-semibold ${color}`}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {(!p.count || p.count < 30) && (
+        <div className="bg-terminal-card border border-terminal-yellow/30 rounded-lg px-4 py-3 text-[11px] text-terminal-yellow leading-5">
+          Noch kleine Stichprobe. Unter 30 geschlossenen Trades sind Winrate, Profit Factor und Expectancy stark zufallsanfällig.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <PerformanceTable title="By Asset" rows={p.by_asset || []} />
+        <PerformanceTable title="By Direction" rows={p.by_direction || []} />
+        <PerformanceTable title="By Score Bucket" rows={p.by_score_bucket || []} />
+      </div>
+
+      <div className="bg-terminal-card border border-terminal-border rounded-lg">
+        <div className="px-4 py-3 border-b border-terminal-border text-[10px] uppercase tracking-widest text-terminal-muted">Recent Closed Trades</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b border-terminal-border">
+                {["Asset", "Dir", "Score", "PnL", "Return", "Exit"].map((h) => (
+                  <th key={h} className="px-4 py-2 text-left text-[9px] uppercase tracking-widest text-terminal-muted font-normal">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-terminal-border">
+              {(p.recent || []).map((trade: any) => {
+                const pnl = Number(trade.pnl_absolute || 0);
+                const pct = Number(trade.pnl_percent || 0);
+                const sign = pnl >= 0 ? "+" : "";
+                return (
+                  <tr key={trade.id} className="hover:bg-terminal-hover">
+                    <td className="px-4 py-2 text-terminal-blue font-semibold">{trade.asset}</td>
+                    <td className={`px-4 py-2 ${trade.direction === "long" ? "text-terminal-green" : "text-terminal-red"}`}>{trade.direction}</td>
+                    <td className="px-4 py-2 text-terminal-text">{trade.signals?.final_score ?? "—"}</td>
+                    <td className={`px-4 py-2 ${pnl >= 0 ? "text-terminal-green" : "text-terminal-red"}`}>{sign}{pnl.toFixed(2)}€</td>
+                    <td className={`px-4 py-2 ${pct >= 0 ? "text-terminal-green" : "text-terminal-red"}`}>{sign}{pct.toFixed(2)}%</td>
+                    <td className="px-4 py-2 text-terminal-muted">{trade.exit_time ? new Date(trade.exit_time).toLocaleString("de-DE") : "—"}</td>
+                  </tr>
+                );
+              })}
+              {(!p.recent || p.recent.length === 0) && (
+                <tr><td colSpan={6} className="px-4 py-4 text-center text-terminal-muted">Keine geschlossenen Trades</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PerformanceTable({ title, rows }: { title: string; rows: any[] }) {
+  return (
+    <div className="bg-terminal-card border border-terminal-border rounded-lg">
+      <div className="px-4 py-3 border-b border-terminal-border text-[10px] uppercase tracking-widest text-terminal-muted">{title}</div>
+      <div className="divide-y divide-terminal-border">
+        {rows.slice(0, 10).map((row) => (
+          <div key={row.key} className="px-4 py-2 grid grid-cols-4 gap-2 text-xs font-mono">
+            <div className="text-terminal-blue font-semibold truncate">{row.key}</div>
+            <div className="text-terminal-muted">{row.count}x</div>
+            <div className={(row.pnl ?? 0) >= 0 ? "text-terminal-green" : "text-terminal-red"}>{(row.pnl ?? 0) >= 0 ? "+" : ""}{(row.pnl ?? 0).toFixed(2)}€</div>
+            <div className="text-terminal-muted">{(row.win_rate ?? 0).toFixed(0)}%</div>
+          </div>
+        ))}
+        {rows.length === 0 && <div className="px-4 py-4 text-center text-terminal-muted text-xs">Keine Daten</div>}
+      </div>
     </div>
   );
 }

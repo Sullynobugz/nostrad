@@ -60,6 +60,46 @@ tradesRouter.get("/history", async (req, res) => {
   res.json(data);
 });
 
+// GET /api/trades/performance — Kennzahlen für Forward-Test
+tradesRouter.get("/performance", async (req, res) => {
+  const limit = parseInt(req.query.limit as string || "500");
+  const { data, error } = await supabase
+    .from("paper_trades")
+    .select("*, signals(final_score, confidence, event_score, sentiment_score, polymarket_score, kronos_score, reasoning)")
+    .eq("status", "closed")
+    .order("exit_time", { ascending: true })
+    .limit(limit);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const trades = data || [];
+  const wins = trades.filter((t: any) => Number(t.pnl_absolute || 0) > 0);
+  const losses = trades.filter((t: any) => Number(t.pnl_absolute || 0) < 0);
+  const grossProfit = wins.reduce((sum: number, t: any) => sum + Number(t.pnl_absolute || 0), 0);
+  const grossLoss = Math.abs(losses.reduce((sum: number, t: any) => sum + Number(t.pnl_absolute || 0), 0));
+  const totalPnl = trades.reduce((sum: number, t: any) => sum + Number(t.pnl_absolute || 0), 0);
+  const avgWin = wins.length ? grossProfit / wins.length : 0;
+  const avgLoss = losses.length ? grossLoss / losses.length : 0;
+
+  res.json({
+    count: trades.length,
+    wins: wins.length,
+    losses: losses.length,
+    win_rate: trades.length ? (wins.length / trades.length) * 100 : 0,
+    total_pnl: totalPnl,
+    expectancy: trades.length ? totalPnl / trades.length : 0,
+    avg_win: avgWin,
+    avg_loss: avgLoss,
+    payoff_ratio: avgLoss ? avgWin / avgLoss : 0,
+    profit_factor: grossLoss ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0,
+    max_drawdown: calculateMaxDrawdown(trades as any[]),
+    by_asset: groupPerformance(trades as any[], (t) => t.asset),
+    by_direction: groupPerformance(trades as any[], (t) => t.direction),
+    by_score_bucket: groupPerformance(trades as any[], (t) => scoreBucket(t.signals?.final_score)),
+    recent: trades.slice(-25).reverse(),
+  });
+});
+
 // GET /api/trades/portfolio — Portfolio-Übersicht
 tradesRouter.get("/portfolio", async (req, res) => {
   try {
@@ -132,3 +172,52 @@ tradesRouter.post("/reset", async (req, res) => {
     errors,
   });
 });
+
+function calculateMaxDrawdown(trades: any[]): number {
+  let equity = 0;
+  let peak = 0;
+  let maxDrawdown = 0;
+  for (const trade of trades) {
+    equity += Number(trade.pnl_absolute || 0);
+    peak = Math.max(peak, equity);
+    maxDrawdown = Math.min(maxDrawdown, equity - peak);
+  }
+  return maxDrawdown;
+}
+
+function groupPerformance(trades: any[], keyFn: (trade: any) => string): Array<{
+  key: string;
+  count: number;
+  win_rate: number;
+  pnl: number;
+  expectancy: number;
+}> {
+  const groups = new Map<string, any[]>();
+  for (const trade of trades) {
+    const key = keyFn(trade) || "unknown";
+    groups.set(key, [...(groups.get(key) || []), trade]);
+  }
+
+  return [...groups.entries()]
+    .map(([key, rows]) => {
+      const pnl = rows.reduce((sum, trade) => sum + Number(trade.pnl_absolute || 0), 0);
+      const wins = rows.filter((trade) => Number(trade.pnl_absolute || 0) > 0).length;
+      return {
+        key,
+        count: rows.length,
+        win_rate: rows.length ? (wins / rows.length) * 100 : 0,
+        pnl,
+        expectancy: rows.length ? pnl / rows.length : 0,
+      };
+    })
+    .sort((a, b) => b.pnl - a.pnl);
+}
+
+function scoreBucket(score: number | null | undefined): string {
+  const value = Number(score || 0);
+  if (value >= 80) return "80-100";
+  if (value >= 70) return "70-79";
+  if (value >= 60) return "60-69";
+  if (value >= 50) return "50-59";
+  return "0-49";
+}
