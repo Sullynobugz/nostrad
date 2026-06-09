@@ -8,6 +8,7 @@ import { ingestRouter } from "./routes/ingest";
 import { signalsRouter } from "./routes/signals";
 import { tradesRouter } from "./routes/trades";
 import { reportsRouter } from "./routes/reports";
+import { politicalRouter } from "./routes/political";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000");
@@ -28,6 +29,7 @@ app.use("/api/ingest", ingestRouter);
 app.use("/api/signals", signalsRouter);
 app.use("/api/trades", tradesRouter);
 app.use("/api/reports", reportsRouter);
+app.use("/api/political", politicalRouter);
 
 // Dashboard Static Files
 app.use(express.static(path.join(__dirname, "../apps/dashboard/dist")));

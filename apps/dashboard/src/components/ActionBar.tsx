@@ -19,6 +19,8 @@ export function ActionBar({ onRefresh }: Props) {
         ? `${res.executed} trades eröffnet, ${res.skipped} übersprungen`
         : res.trades_executed != null
         ? `${res.signals_created ?? 0} signals, ${res.trades_executed} eröffnet, ${res.trades_closed ?? 0} geschlossen`
+        : res.signals_created != null
+        ? `${res.signals_created} signals, ${res.skipped ?? 0} übersprungen`
         : res.closed != null
         ? `${res.closed} trades geschlossen`
         : res.inserted != null
@@ -42,6 +44,7 @@ export function ActionBar({ onRefresh }: Props) {
 
   const actions = [
     { label: "Kronos Scan", action: () => api.kronosScan(), highlight: true },
+    { label: "Political Scan", action: () => api.politicalScan(), highlight: false },
     { label: "Execute Signals", action: () => api.executeSignals(), highlight: false },
     { label: "Close Expired", action: () => api.closeExpired(), highlight: false },
     { label: "Ingest + Queue", action: async () => {

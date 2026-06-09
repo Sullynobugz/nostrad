@@ -31,5 +31,6 @@ export const api = {
   closeExpired: () => post<any>("/trades/close-expired"),
   generateSignal: (asset: string) => post<any>("/signals/generate", { asset }),
   kronosScan: (assets?: string[]) => post<any>("/signals/kronos-scan", assets ? { assets } : {}),
+  politicalScan: () => post<any>("/political/scan"),
   resetPortfolio: () => post<any>("/trades/reset"),
 };
