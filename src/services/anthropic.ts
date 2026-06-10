@@ -16,6 +16,7 @@ export async function callWithTool<T>(params: {
   toolDescription: string;
   inputSchema: Anthropic.Tool["input_schema"];
   model?: string;
+  signal?: AbortSignal;
 }): Promise<T> {
   const {
     systemPrompt,
@@ -24,28 +25,32 @@ export async function callWithTool<T>(params: {
     toolDescription,
     inputSchema,
     model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5",
+    signal,
   } = params;
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 16000,
-    system: [
-      {
-        type: "text",
-        text: systemPrompt,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    tools: [
-      {
-        name: toolName,
-        description: toolDescription,
-        input_schema: inputSchema,
-      },
-    ],
-    tool_choice: { type: "any" },
-    messages: [{ role: "user", content: userMessage }],
-  });
+  const response = await anthropic.messages.create(
+    {
+      model,
+      max_tokens: 16000,
+      system: [
+        {
+          type: "text",
+          text: systemPrompt,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: [
+        {
+          name: toolName,
+          description: toolDescription,
+          input_schema: inputSchema,
+        },
+      ],
+      tool_choice: { type: "any" },
+      messages: [{ role: "user", content: userMessage }],
+    },
+    { signal, maxRetries: 0 }
+  );
 
   const toolBlock = response.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"

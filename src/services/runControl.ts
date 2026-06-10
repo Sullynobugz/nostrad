@@ -14,6 +14,7 @@ export interface RunState {
 }
 
 let activeRun: RunState | null = null;
+const abortControllers = new Map<string, AbortController>();
 
 export function beginRun(kind: RunKind, label: string): RunState | null {
   if (activeRun && (activeRun.status === "running" || activeRun.status === "stopping")) {
@@ -28,6 +29,7 @@ export function beginRun(kind: RunKind, label: string): RunState | null {
     startedAt: new Date().toISOString(),
     stopRequested: false,
   };
+  abortControllers.set(activeRun.id, new AbortController());
 
   return activeRun;
 }
@@ -43,6 +45,7 @@ export function requestRunStop(kind?: RunKind): RunState | null {
     stoppedAt: activeRun.stoppedAt ?? new Date().toISOString(),
     message: "Stop requested",
   };
+  abortControllers.get(activeRun.id)?.abort();
 
   return activeRun;
 }
@@ -56,12 +59,17 @@ export function finishRun(id: string, status: Exclude<RunStatus, "idle" | "runni
     finishedAt: new Date().toISOString(),
     message,
   };
+  abortControllers.delete(id);
 
   return activeRun;
 }
 
 export function isRunStopRequested(id: string): boolean {
   return Boolean(activeRun && activeRun.id === id && activeRun.stopRequested);
+}
+
+export function getRunAbortSignal(id: string): AbortSignal | undefined {
+  return abortControllers.get(id)?.signal;
 }
 
 export function getRunState(): RunState | { status: "idle"; stopRequested: false } {

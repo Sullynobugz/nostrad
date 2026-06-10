@@ -11,7 +11,8 @@ const CRYPTO_ASSETS = new Set(["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE",
 // python → externer Kronos Python-Server
 export async function runKronosEngine(
   symbol: string,
-  overrideMode?: KronosMode
+  overrideMode?: KronosMode,
+  options?: { signal?: AbortSignal }
 ): Promise<KronosEngineOutput> {
   const mode = (overrideMode || process.env.KRONOS_MODE || "native") as KronosMode;
 
@@ -19,10 +20,10 @@ export async function runKronosEngine(
     case "mock":
       return mockKronos(symbol);
     case "python":
-      return pythonKronos(symbol);
+      return pythonKronos(symbol, options);
     case "native":
     default:
-      return nativeKronos(symbol);
+      return nativeKronos(symbol, options);
   }
 }
 
@@ -43,7 +44,7 @@ function mockKronos(symbol: string): KronosEngineOutput {
 // ── PYTHON-Modus (echter Kronos Foundation Model) ────────────
 // Kronos gibt tatsächliche Preisvorhersagen zurück (trainiert auf 45 Börsen).
 // Der FastAPI-Service berechnet daraus direction/score/confidence.
-async function pythonKronos(symbol: string): Promise<KronosEngineOutput> {
+async function pythonKronos(symbol: string, options?: { signal?: AbortSignal }): Promise<KronosEngineOutput> {
   const url = process.env.KRONOS_PYTHON_URL || "http://localhost:5001/predict";
   let candles: OHLCV[];
 
@@ -63,7 +64,7 @@ async function pythonKronos(symbol: string): Promise<KronosEngineOutput> {
     const { data } = await axios.post(
       url,
       { symbol, candles },
-      { timeout: 60000 }  // Kronos kann auf CPU etwas dauern
+      { timeout: 60000, signal: options?.signal }  // Kronos kann auf CPU etwas dauern
     );
 
     return {
@@ -81,7 +82,7 @@ async function pythonKronos(symbol: string): Promise<KronosEngineOutput> {
 }
 
 // ── NATIVE-Modus (LLM-basierte Zeitreihenanalyse im Kronos-Stil) ──
-async function nativeKronos(symbol: string): Promise<KronosEngineOutput> {
+async function nativeKronos(symbol: string, options?: { signal?: AbortSignal }): Promise<KronosEngineOutput> {
   let candles: OHLCV[];
   try {
     candles = await fetchCandles(symbol);
@@ -130,6 +131,7 @@ Erstelle eine Preis-Prognose für die nächsten 24 Stunden und rufe das Tool pre
       userMessage,
       toolName: "predict_price_direction",
       toolDescription: "Sagt die Preisbewegung eines Assets für die nächsten 24h vorher",
+      signal: options?.signal,
       inputSchema: {
         type: "object" as const,
         properties: {

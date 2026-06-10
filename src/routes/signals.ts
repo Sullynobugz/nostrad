@@ -11,7 +11,7 @@ import { executeSignalIds } from "../paperTrading/executor";
 import { closeTradeNow } from "../paperTrading/closer";
 import { markTradeToMarket } from "../paperTrading/portfolio";
 import { buildAdaptiveRiskPlan, getAdaptiveRiskConfig, getAdaptiveRiskExitReason } from "../paperTrading/riskEngine";
-import { beginRun, finishRun, getRunState, isRunStopRequested, requestRunStop } from "../services/runControl";
+import { beginRun, finishRun, getRunAbortSignal, getRunState, isRunStopRequested, requestRunStop } from "../services/runControl";
 import type { DbEvent, DbPaperTrade, Direction } from "../types";
 
 export const signalsRouter = Router();
@@ -244,7 +244,7 @@ signalsRouter.post("/kronos-scan", async (req, res) => {
     }
 
     try {
-      const kronos = await runKronosEngine(asset);
+      const kronos = await runKronosEngine(asset, undefined, { signal: getRunAbortSignal(activeRun.id) });
       const signalConfidence = kronos.kronos_score;
 
       if (isRunStopRequested(activeRun.id)) {
