@@ -46,7 +46,7 @@ app.get("/health", (req, res) => {
     status: "ok",
     version: "0.1.0",
     timestamp: new Date().toISOString(),
-    kronos_mode: process.env.KRONOS_MODE || "native",
+    kronos_mode: process.env.KRONOS_MODE || "rules",
     env: process.env.NODE_ENV || "development",
   });
 });
@@ -64,7 +64,7 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 app.listen(PORT, () => {
   console.log(`🔭 Nostrad API läuft auf http://localhost:${PORT}`);
-  console.log(`   Kronos Mode: ${process.env.KRONOS_MODE || "native"}`);
+  console.log(`   Kronos Mode: ${process.env.KRONOS_MODE || "rules"}`);
   console.log(`   Dashboard: http://localhost:${PORT}/dashboard`);
 });
 

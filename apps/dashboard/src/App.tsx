@@ -482,9 +482,13 @@ PAPER_TRADING_MIN_CONFIDENCE=65
 PAPER_TRADING_MIN_FINAL_SCORE=72
 PAPER_TRADING_MIN_CONFIDENCE=72
 
-# Kronos auf echtes Foundation Model umschalten:
-KRONOS_MODE=python          # python | native | mock
-KRONOS_MODEL_SIZE=small     # mini | small | base`}</pre>
+# Kronos kostensicher testen:
+KRONOS_MODE=rules           # rules | python | native | mock
+KRONOS_ALLOW_LLM=false      # native/Claude bleibt gesperrt
+
+# Claude nur bewusst aktivieren:
+KRONOS_MODE=native
+KRONOS_ALLOW_LLM=true`}</pre>
           </div>
         </div>
       </section>

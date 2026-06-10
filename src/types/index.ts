@@ -6,7 +6,7 @@ export type Direction = "long" | "short" | "neutral";
 export type SignalStatus = "pending" | "traded" | "skipped" | "expired";
 export type TradeStatus = "open" | "closed";
 export type EngineName = "event" | "sentiment" | "polymarket" | "kronos" | "final";
-export type KronosMode = "mock" | "native" | "python";
+export type KronosMode = "mock" | "rules" | "native" | "python";
 
 // ── Supabase DB-Typen ──────────────────────────────────────────
 
